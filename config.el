@@ -125,10 +125,13 @@
 
 ;;; Find file across Treemacs projects
 
-;; Build output and package stores that projects don't always gitignore.
+;; Build output and package stores that projects don't always gitignore,
+;; plus images, which are rarely opened by name.
 (after! projectile
   (dolist (dir '("*node_modules" "*nimcache" "*.pnpm-store"))
-    (add-to-list 'projectile-globally-ignored-directories dir)))
+    (add-to-list 'projectile-globally-ignored-directories dir))
+  (dolist (suffix '(".webp" ".png" ".jpg" ".jpeg" ".svg"))
+    (add-to-list 'projectile-globally-ignored-file-suffixes suffix)))
 
 (defun my/treemacs-project-roots ()
   "Return (NAME . ROOT) for each project in the current Treemacs workspace.
