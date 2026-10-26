@@ -125,6 +125,11 @@
 
 ;;; Find file across Treemacs projects
 
+;; Build output and package stores that projects don't always gitignore.
+(after! projectile
+  (dolist (dir '("*node_modules" "*nimcache" "*.pnpm-store"))
+    (add-to-list 'projectile-globally-ignored-directories dir)))
+
 (defun my/treemacs-project-roots ()
   "Return (NAME . ROOT) for each project in the current Treemacs workspace.
 The project containing the current buffer comes first."
