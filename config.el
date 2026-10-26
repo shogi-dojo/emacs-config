@@ -123,16 +123,15 @@
           (t (nerd-icons-faicon "nf-fa-file_o")))))
 
 (defun my/tab-bar-format-icon (name tab _i)
-  "Prefix NAME with left padding and TAB's icon."
-  (concat (my/tab-bar--pad 14)
+  "Prefix NAME with padding and TAB's icon.
+The padding is plain spaces: `tab-bar-auto-width' widens a tab by copying
+its first character, and copies of a `display' space merge into one, so
+a display-space first character would make it loop forever in redisplay."
+  (concat "  "
           (if (require 'nerd-icons nil t)
               (concat (or (ignore-errors (my/tab-bar-tab-icon tab)) "") " ")
             "")
           name))
-
-(defun my/tab-bar-format-right-padding (name _tab _i)
-  "Suffix NAME with right padding."
-  (concat name (my/tab-bar--pad 10)))
 
 (setq tab-bar-separator (my/tab-bar--pad 1)
       tab-bar-close-button-show t
@@ -141,8 +140,20 @@
       tab-bar-tab-name-format-functions
       '(my/tab-bar-format-icon
         tab-bar-tab-name-format-close-button
-        my/tab-bar-format-right-padding
         tab-bar-tab-name-format-face))
+
+;; The tab's right padding is a space after the close button.  It must
+;; carry `close-tab' so auto-width still sees the button at the end.
+;; Tab-bar reloads its buttons whenever the mode turns on, so add it then.
+(defun my/tab-bar-pad-close-button (&rest _)
+  "Append a clickable space to `tab-bar-close-button'."
+  (unless (get-text-property 0 'my/padded tab-bar-close-button)
+    (setq tab-bar-close-button
+          (propertize (concat tab-bar-close-button
+                              (propertize " " 'close-tab t))
+                      'my/padded t))))
+
+(advice-add 'tab-bar--load-buttons :after #'my/tab-bar-pad-close-button)
 
 (defun my/tab-bar-apply-faces ()
   "Restyle the tab bar from the current theme's palette."
