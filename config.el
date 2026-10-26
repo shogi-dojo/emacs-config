@@ -32,6 +32,23 @@
 
 (load! (format "platforms/%s" my/platform))
 
+;;; Quit without confirmation
+
+;; Emacs still asks about unsaved buffers and running processes.
+(setq confirm-kill-emacs nil)
+
+;;; Reload files changed by external tools
+
+;; Refresh unmodified file buffers; auto-revert preserves unsaved edits.
+;; Doom's own autorevert :config resets these on load, so set them after it.
+(after! autorevert
+  (setq auto-revert-interval 1
+        auto-revert-use-notify t
+        auto-revert-verbose nil
+        auto-revert-check-vc-info t
+        global-auto-revert-non-file-buffers t))
+(global-auto-revert-mode 1)
+
 ;;; Appearance
 
 (setq doom-theme 'doom-dracula
@@ -111,6 +128,52 @@
                              ("б б" . "б")
                              ("," . "C-"))))
 
+;;; Find file across Treemacs projects
+
+;; Build output and package stores that projects don't always gitignore,
+;; plus images and audio, which are rarely opened by name.
+;; Top-level notes/ is gitignored in some projects but holds agent notes,
+;; so list it anyway; the ignores above still apply inside it.
+(after! projectile
+  (dolist (dir '("*node_modules" "*nimcache" "*.pnpm-store" "*.venv" "*__pycache__"))
+    (add-to-list 'projectile-globally-ignored-directories dir))
+  (dolist (suffix '(".webp" ".png" ".jpg" ".jpeg" ".svg" ".mp3" ".wav"))
+    (add-to-list 'projectile-globally-ignored-file-suffixes suffix))
+  (add-to-list 'projectile-globally-unignored-directories "notes"))
+
+(defun my/treemacs-project-roots ()
+  "Return (NAME . ROOT) for each project in the current Treemacs workspace.
+The project containing the current buffer comes first."
+  (when (require 'treemacs nil t)
+    (let* ((here (and default-directory (expand-file-name default-directory)))
+           (projects
+            (mapcar (lambda (p)
+                      (cons (treemacs-project->name p)
+                            (file-name-as-directory
+                             (expand-file-name (treemacs-project->path p)))))
+                    (treemacs-workspace->projects (treemacs-current-workspace)))))
+      (append (seq-filter (lambda (p) (and here (string-prefix-p (cdr p) here))) projects)
+              (seq-remove (lambda (p) (and here (string-prefix-p (cdr p) here))) projects)))))
+
+(defun my/find-file-in-treemacs-projects ()
+  "Find a file in any project of the current Treemacs workspace.
+Falls back to `projectile-find-file' when the workspace has no projects."
+  (interactive)
+  (let ((projects (my/treemacs-project-roots)))
+    (if (null projects)
+        (call-interactively #'projectile-find-file)
+      (let* ((paths (make-hash-table :test #'equal))
+             ;; Skip projectile's persistent cache so new files show up at once.
+             (projectile-enable-caching nil)
+             (candidates
+              (cl-loop for (name . root) in projects
+                       nconc (cl-loop for file in (projectile-project-files root)
+                                      for candidate = (concat name "/" file)
+                                      do (puthash candidate (expand-file-name file root) paths)
+                                      collect candidate)))
+             (choice (completing-read "Find file in projects: " candidates nil t)))
+        (find-file (gethash choice paths))))))
+
 ;;; Key chords
 
 (key-chord-mode +1)
@@ -118,7 +181,7 @@
 (key-chord-define-global "jk" 'avy-goto-char)
 (key-chord-define-global "jl" 'avy-goto-line)
 (key-chord-define-global "xx" 'execute-extended-command)
-(key-chord-define-global "kk" 'projectile-find-file)
+(key-chord-define-global "kk" 'my/find-file-in-treemacs-projects)
 (key-chord-define-global "ww" 'switch-to-buffer)
 (key-chord-define-global "JJ" 'crux-switch-to-previous-buffer)
 (key-chord-define-global ";;" 'repeat)
@@ -126,7 +189,7 @@
 (when (eq my/platform 'macos)
   (defvar my/multibyte-chords
     '((?ц . switch-to-buffer)
-      (?л . projectile-find-file)
+      (?л . my/find-file-in-treemacs-projects)
       (?ч . execute-extended-command))
     "Alist of (CHAR . COMMAND) for double-tap multibyte key chords.")
 
@@ -193,6 +256,11 @@
                 (lambda (&rest _)
                   (when-let ((path (current-kill 0 t)))
                     (gui-set-selection 'CLIPBOARD path))))))
+
+;;; Portable reading mode
+
+;; Load the Doom-independent reading layer shared with the iOS profile.
+(load! "platforms/ios/reader")
 
 ;;; EPUB reading
 
@@ -322,26 +390,8 @@ If `visual-line-mode' is on, consider line as visual line."
         (message "Copied to clipboard: %s" file-path))
     (error "Buffer is not visiting a file")))
 
-(define-minor-mode book-mode
-  "Make current buffer look like a book: black text on white background."
-  :lighter " Book"
-  (if book-mode
-      (progn
-        (face-remap-add-relative 'default :background "white" :foreground "black")
-        (face-remap-add-relative 'font-lock-keyword-face :foreground "black")
-        (face-remap-add-relative 'font-lock-string-face :foreground "black")
-        (face-remap-add-relative 'font-lock-comment-face :foreground "gray40")
-        (face-remap-add-relative 'font-lock-function-name-face :foreground "black")
-        (face-remap-add-relative 'font-lock-variable-name-face :foreground "black")
-        (face-remap-add-relative 'font-lock-type-face :foreground "black")
-        (face-remap-add-relative 'font-lock-constant-face :foreground "black")
-        (face-remap-add-relative 'font-lock-builtin-face :foreground "black")
-        (face-remap-add-relative 'hl-line :background "gray90")
-        (face-remap-add-relative 'cursor :background "black")
-        (face-remap-add-relative 'region :background "light blue" :foreground "black")
-        (text-scale-set 2))
-    (text-scale-set 0)
-    (face-remap-reset-base 'default)))
+;; `book-mode' is provided by platforms/ios/reader.el (loaded above), while
+;; `ios/reading-mode' adds the read-only small-screen behavior used on iOS.
 
 ;;; File associations
 
@@ -351,6 +401,13 @@ If `visual-line-mode' is on, consider line as visual line."
 
 (require 'acp nil t)
 (require 'agent-shell nil t)
+
+;; agent-shell pastes clipboard images by remapping `yank'; the platform paste
+;; key runs `clipboard-yank', so remap that too.
+(after! agent-shell
+  (define-key agent-shell-mode-map [remap clipboard-yank] #'agent-shell-yank-dwim))
+(after! agent-shell-viewport
+  (define-key agent-shell-viewport-edit-mode-map [remap clipboard-yank] #'agent-shell-yank-dwim))
 
 ;;; Platform keybindings
 
