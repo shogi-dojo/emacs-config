@@ -92,6 +92,80 @@
 (when (fboundp 'context-menu-mode)
   (context-menu-mode 1))
 
+;;; Tab bar
+
+;; Sublime-like tabs: taller, padded, a UI font, a file-type icon, the
+;; selected tab in the editor background and the rest in the bar colour.
+(defvar my/tab-bar-font-families
+  '("SF Pro Text" "SF Pro" "Helvetica Neue" "Inter" "Cantarell" "Noto Sans")
+  "UI fonts tried in order for tab labels; the editor font is the fallback.")
+
+(defvar my/tab-bar-named-icons
+  '(("Agents" . (nerd-icons-mdicon "nf-md-robot_outline")))
+  "Icons for renamed tabs, whose names are not buffer names.")
+
+(defun my/tab-bar--pad (pixels)
+  "Return a blank of PIXELS width."
+  (propertize " " 'display `(space :width (,pixels))))
+
+(defun my/tab-bar--tab-buffer (tab)
+  "Return the buffer TAB shows, or nil."
+  (if (eq (car tab) 'current-tab)
+      (window-buffer (minibuffer-selected-window))
+    (get-buffer (alist-get 'name tab))))
+
+(defun my/tab-bar-tab-icon (tab)
+  "Return the icon for TAB: a named icon, its buffer's icon, or a file."
+  (let ((named (assoc (alist-get 'name tab) my/tab-bar-named-icons))
+        (buffer (my/tab-bar--tab-buffer tab)))
+    (cond (named (eval (cdr named) t))
+          (buffer (with-current-buffer buffer (nerd-icons-icon-for-buffer)))
+          (t (nerd-icons-faicon "nf-fa-file_o")))))
+
+(defun my/tab-bar-format-icon (name tab _i)
+  "Prefix NAME with left padding and TAB's icon."
+  (concat (my/tab-bar--pad 14)
+          (if (require 'nerd-icons nil t)
+              (concat (or (ignore-errors (my/tab-bar-tab-icon tab)) "") " ")
+            "")
+          name))
+
+(defun my/tab-bar-format-right-padding (name _tab _i)
+  "Suffix NAME with right padding."
+  (concat name (my/tab-bar--pad 10)))
+
+(setq tab-bar-separator (my/tab-bar--pad 1)
+      tab-bar-close-button-show t
+      tab-bar-auto-width-min '((150) 14)
+      tab-bar-auto-width-max '((280) 26)
+      tab-bar-tab-name-format-functions
+      '(my/tab-bar-format-icon
+        tab-bar-tab-name-format-close-button
+        my/tab-bar-format-right-padding
+        tab-bar-tab-name-format-face))
+
+(defun my/tab-bar-apply-faces ()
+  "Restyle the tab bar from the current theme's palette."
+  (let ((bar (doom-color 'bg-alt))
+        (active (doom-color 'bg))
+        (family (seq-find (lambda (f) (find-font (font-spec :family f)))
+                          my/tab-bar-font-families))
+        (vertical '(1 . 8)))
+    (set-face-attribute 'tab-bar nil
+                        :family (or family 'unspecified) :height 1.0
+                        :background bar :foreground (doom-color 'base5)
+                        :box `(:line-width (1 . 2) :color ,bar))
+    (set-face-attribute 'tab-bar-tab nil
+                        :inherit 'tab-bar :background active
+                        :foreground (doom-color 'fg) :weight 'semi-bold
+                        :box `(:line-width ,vertical :color ,active))
+    (set-face-attribute 'tab-bar-tab-inactive nil
+                        :inherit 'tab-bar :background bar
+                        :foreground (doom-color 'base6) :weight 'normal
+                        :box `(:line-width ,vertical :color ,bar))))
+
+(add-hook 'doom-load-theme-hook #'my/tab-bar-apply-faces)
+
 ;;; Behavior
 
 (setq org-directory "~/org/"
