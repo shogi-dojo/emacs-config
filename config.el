@@ -32,6 +32,11 @@
 
 (load! (format "platforms/%s" my/platform))
 
+;;; Quit without confirmation
+
+;; Emacs still asks about unsaved buffers and running processes.
+(setq confirm-kill-emacs nil)
+
 ;;; Reload files changed by external tools
 
 ;; Refresh unmodified file buffers; auto-revert preserves unsaved edits.
