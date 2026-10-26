@@ -489,6 +489,9 @@ If `visual-line-mode' is on, consider line as visual line."
 (require 'acp nil t)
 (require 'agent-shell nil t)
 
+;; Reopening a chat replays its whole conversation, not just its title.
+(setq agent-shell-session-restore-verbosity 'full)
+
 ;; agent-shell pastes clipboard images by remapping `yank'; the platform paste
 ;; key runs `clipboard-yank', so remap that too.
 (after! agent-shell
