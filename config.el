@@ -493,11 +493,21 @@ If `visual-line-mode' is on, consider line as visual line."
 (setq agent-shell-session-restore-verbosity 'full)
 
 ;; agent-shell pastes clipboard images by remapping `yank'; the platform paste
-;; key runs `clipboard-yank', so remap that too.
+;; key runs `clipboard-yank', so remap that too.  Text falls back to `yank',
+;; which skips the system clipboard while `select-enable-clipboard' is nil, so
+;; turn it on for this paste as `clipboard-yank' does.
+(defun my/agent-shell-clipboard-yank (&optional arg)
+  "Paste a clipboard image, or the clipboard's text, into agent-shell.
+ARG is passed to `agent-shell-yank-dwim'."
+  (interactive "*P")
+  (let ((select-enable-clipboard t))
+    (agent-shell-yank-dwim arg)))
+
 (after! agent-shell
-  (define-key agent-shell-mode-map [remap clipboard-yank] #'agent-shell-yank-dwim))
+  (define-key agent-shell-mode-map [remap clipboard-yank] #'my/agent-shell-clipboard-yank))
 (after! agent-shell-viewport
-  (define-key agent-shell-viewport-edit-mode-map [remap clipboard-yank] #'agent-shell-yank-dwim))
+  (define-key agent-shell-viewport-edit-mode-map [remap clipboard-yank]
+              #'my/agent-shell-clipboard-yank))
 
 ;;; Agent desk
 
