@@ -123,6 +123,41 @@
                              ("б б" . "б")
                              ("," . "C-"))))
 
+;;; Find file across Treemacs projects
+
+(defun my/treemacs-project-roots ()
+  "Return (NAME . ROOT) for each project in the current Treemacs workspace.
+The project containing the current buffer comes first."
+  (when (require 'treemacs nil t)
+    (let* ((here (and default-directory (expand-file-name default-directory)))
+           (projects
+            (mapcar (lambda (p)
+                      (cons (treemacs-project->name p)
+                            (file-name-as-directory
+                             (expand-file-name (treemacs-project->path p)))))
+                    (treemacs-workspace->projects (treemacs-current-workspace)))))
+      (append (seq-filter (lambda (p) (and here (string-prefix-p (cdr p) here))) projects)
+              (seq-remove (lambda (p) (and here (string-prefix-p (cdr p) here))) projects)))))
+
+(defun my/find-file-in-treemacs-projects ()
+  "Find a file in any project of the current Treemacs workspace.
+Falls back to `projectile-find-file' when the workspace has no projects."
+  (interactive)
+  (let ((projects (my/treemacs-project-roots)))
+    (if (null projects)
+        (call-interactively #'projectile-find-file)
+      (let* ((paths (make-hash-table :test #'equal))
+             ;; Skip projectile's persistent cache so new files show up at once.
+             (projectile-enable-caching nil)
+             (candidates
+              (cl-loop for (name . root) in projects
+                       nconc (cl-loop for file in (projectile-project-files root)
+                                      for candidate = (concat name "/" file)
+                                      do (puthash candidate (expand-file-name file root) paths)
+                                      collect candidate)))
+             (choice (completing-read "Find file in projects: " candidates nil t)))
+        (find-file (gethash choice paths))))))
+
 ;;; Key chords
 
 (key-chord-mode +1)
@@ -130,7 +165,7 @@
 (key-chord-define-global "jk" 'avy-goto-char)
 (key-chord-define-global "jl" 'avy-goto-line)
 (key-chord-define-global "xx" 'execute-extended-command)
-(key-chord-define-global "kk" 'projectile-find-file)
+(key-chord-define-global "kk" 'my/find-file-in-treemacs-projects)
 (key-chord-define-global "ww" 'switch-to-buffer)
 (key-chord-define-global "JJ" 'crux-switch-to-previous-buffer)
 (key-chord-define-global ";;" 'repeat)
@@ -138,7 +173,7 @@
 (when (eq my/platform 'macos)
   (defvar my/multibyte-chords
     '((?ц . switch-to-buffer)
-      (?л . projectile-find-file)
+      (?л . my/find-file-in-treemacs-projects)
       (?ч . execute-extended-command))
     "Alist of (CHAR . COMMAND) for double-tap multibyte key chords.")
 
