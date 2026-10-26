@@ -225,7 +225,7 @@
         (error (ert-fail (format "Parse error in packages.el: %s" err)))))))
 
 (ert-deftest test-agent-desk-is-a-local-package ()
-  "agent-desk should be declared from its local checkout, not a remote."
+  "agent-desk should come from its local checkout, only where it exists."
   (let* ((dir (file-name-directory (or load-file-name
                                        buffer-file-name
                                        default-directory)))
@@ -236,9 +236,14 @@
                         (while t (push (read (current-buffer)) forms))
                       (end-of-file nil))
                     forms)))
+         (guard (seq-find (lambda (form)
+                            (and (eq (car-safe form) 'when)
+                                 (equal (cadr form)
+                                        '(file-directory-p "~/projects/emacs/agent-desk"))))
+                          forms))
          (decl (seq-find (lambda (form)
                            (equal (seq-take form 2) '(package! agent-desk)))
-                         forms))
+                         (cddr guard)))
          (recipe (plist-get (cddr decl) :recipe)))
     (should decl)
     (should (equal (plist-get recipe :local-repo) "~/projects/emacs/agent-desk"))
