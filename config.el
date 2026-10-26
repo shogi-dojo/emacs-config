@@ -409,6 +409,28 @@ If `visual-line-mode' is on, consider line as visual line."
 (after! agent-shell-viewport
   (define-key agent-shell-viewport-edit-mode-map [remap clipboard-yank] #'agent-shell-yank-dwim))
 
+;;; Agent desk
+
+;; One agent-shell copy per account, each with its own config dir.  Loaded on
+;; first use (`M-x agent-desk'); registering adds the copies to agent-shell's
+;; picker too.  Log an account in once with its CLI, e.g.
+;; CLAUDE_CONFIG_DIR=~/.claude-2 claude, or CODEX_HOME=~/.codex-multi-2 codex login.
+(use-package! agent-desk
+  :commands (agent-desk agent-desk-new-chat agent-desk-toggle-sidebar
+             agent-desk-toggle-details)
+  :init
+  (setq agent-desk-accounts
+        '((:id claude-main :provider claude :label "Claude" :home "~/.claude")
+          (:id claude-2 :provider claude :label "Claude·2" :home "~/.claude-2"
+           :color "#e0a35a")
+          (:id claude-gui2 :provider claude :label "Claude·G2" :home "~/.claude-gui-2"
+           :color "#7aa2f7")
+          (:id codex-main :provider codex :label "Codex" :home "~/.codex")
+          (:id codex-2 :provider codex :label "Codex·2" :home "~/.codex-multi-2"
+           :color "#9ece6a")))
+  :config
+  (agent-desk-register))
+
 ;;; Platform keybindings
 
 (defvar my/platform-keybinding-format nil
