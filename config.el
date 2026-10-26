@@ -126,12 +126,15 @@
 ;;; Find file across Treemacs projects
 
 ;; Build output and package stores that projects don't always gitignore,
-;; plus images, which are rarely opened by name.
+;; plus images and audio, which are rarely opened by name.
+;; Top-level notes/ is gitignored in some projects but holds agent notes,
+;; so list it anyway; the ignores above still apply inside it.
 (after! projectile
-  (dolist (dir '("*node_modules" "*nimcache" "*.pnpm-store"))
+  (dolist (dir '("*node_modules" "*nimcache" "*.pnpm-store" "*.venv" "*__pycache__"))
     (add-to-list 'projectile-globally-ignored-directories dir))
-  (dolist (suffix '(".webp" ".png" ".jpg" ".jpeg" ".svg"))
-    (add-to-list 'projectile-globally-ignored-file-suffixes suffix)))
+  (dolist (suffix '(".webp" ".png" ".jpg" ".jpeg" ".svg" ".mp3" ".wav"))
+    (add-to-list 'projectile-globally-ignored-file-suffixes suffix))
+  (add-to-list 'projectile-globally-unignored-directories "notes"))
 
 (defun my/treemacs-project-roots ()
   "Return (NAME . ROOT) for each project in the current Treemacs workspace.
