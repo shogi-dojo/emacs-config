@@ -62,6 +62,9 @@
   :recipe (:host github :repo "xenodium/acp.el"))
 (package! agent-shell
   :recipe (:host github :repo "xenodium/agent-shell"))
+;; Local checkout; run `doom sync' after pulling changes into it.
+(package! agent-desk
+  :recipe (:local-repo "~/projects/emacs/agent-desk" :files ("*.el")))
 (package! nov)
 (package! substitute)
 ;; Linux only

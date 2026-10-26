@@ -224,6 +224,26 @@
         (end-of-file nil)
         (error (ert-fail (format "Parse error in packages.el: %s" err)))))))
 
+(ert-deftest test-agent-desk-is-a-local-package ()
+  "agent-desk should be declared from its local checkout, not a remote."
+  (let* ((dir (file-name-directory (or load-file-name
+                                       buffer-file-name
+                                       default-directory)))
+         (forms (with-temp-buffer
+                  (insert-file-contents (expand-file-name "packages.el" dir))
+                  (let (forms)
+                    (condition-case nil
+                        (while t (push (read (current-buffer)) forms))
+                      (end-of-file nil))
+                    forms)))
+         (decl (seq-find (lambda (form)
+                           (equal (seq-take form 2) '(package! agent-desk)))
+                         forms))
+         (recipe (plist-get (cddr decl) :recipe)))
+    (should decl)
+    (should (equal (plist-get recipe :local-repo) "~/projects/emacs/agent-desk"))
+    (should-not (plist-get recipe :host))))
+
 (ert-deftest test-all-platform-files-parse ()
   "All platform .el files should be valid elisp."
   (let ((dir (file-name-directory (or load-file-name
