@@ -32,6 +32,18 @@
 
 (load! (format "platforms/%s" my/platform))
 
+;;; Reload files changed by external tools
+
+;; Refresh unmodified file buffers; auto-revert preserves unsaved edits.
+;; Doom's own autorevert :config resets these on load, so set them after it.
+(after! autorevert
+  (setq auto-revert-interval 1
+        auto-revert-use-notify t
+        auto-revert-verbose nil
+        auto-revert-check-vc-info t
+        global-auto-revert-non-file-buffers t))
+(global-auto-revert-mode 1)
+
 ;;; Appearance
 
 (setq doom-theme 'doom-dracula
