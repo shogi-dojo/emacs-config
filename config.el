@@ -127,9 +127,11 @@
 The padding is plain spaces: `tab-bar-auto-width' widens a tab by copying
 its first character, and copies of a `display' space merge into one, so
 a display-space first character would make it loop forever in redisplay."
-  (concat "  "
+  (concat "   "
           (if (require 'nerd-icons nil t)
-              (concat (or (ignore-errors (my/tab-bar-tab-icon tab)) "") " ")
+              ;; A display space is safe here, away from the first character.
+              (concat (or (ignore-errors (my/tab-bar-tab-icon tab)) "")
+                      (my/tab-bar--pad 10))
             "")
           name))
 
