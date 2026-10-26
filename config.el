@@ -402,6 +402,13 @@ If `visual-line-mode' is on, consider line as visual line."
 (require 'acp nil t)
 (require 'agent-shell nil t)
 
+;; agent-shell pastes clipboard images by remapping `yank'; the platform paste
+;; key runs `clipboard-yank', so remap that too.
+(after! agent-shell
+  (define-key agent-shell-mode-map [remap clipboard-yank] #'agent-shell-yank-dwim))
+(after! agent-shell-viewport
+  (define-key agent-shell-viewport-edit-mode-map [remap clipboard-yank] #'agent-shell-yank-dwim))
+
 ;;; Platform keybindings
 
 (defvar my/platform-keybinding-format nil
