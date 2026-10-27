@@ -12,6 +12,8 @@
 (declare-function agent-shell-busy-submit-queue "agent-shell-prompt-queue")
 (declare-function mixed-pitch-mode "mixed-pitch")
 (declare-function map-elt "map")
+(declare-function map-nested-elt "map")
+(declare-function agent-shell-subscribe-to "agent-shell")
 (declare-function agent-desk-store-get-thread "agent-desk-store")
 (declare-function agent-desk-account-by-id "agent-desk-accounts")
 (declare-function agent-desk-icon-letter "agent-desk-icons")
@@ -148,6 +150,41 @@ It starts in the chat's directory and is reused for that project."
 
 ;;; One modeline, with the chat's account and model
 
+(defvar my/agent-usage (make-hash-table :test 'equal)
+  "Per account id, the latest rate limit the agent reported.
+It is the agent's `_claude/rateLimit' metadata.")
+
+(defvar-local my/agent-context-percent nil
+  "How full the chat's context window is, in percent, or nil until reported.")
+
+(defun my/agent-usage-subscribe ()
+  "Follow the agent's usage reports for the chat in the current buffer."
+  (when (fboundp 'agent-shell-subscribe-to)
+    (let ((buffer (current-buffer)))
+      (agent-shell-subscribe-to
+       :shell-buffer buffer
+       :event 'usage-update
+       :on-event
+       (lambda (event)
+         (when (buffer-live-p buffer)
+           (let* ((usage (map-nested-elt event '(:data :usage)))
+                  (used (map-elt usage :context-used))
+                  (size (map-elt usage :context-size))
+                  (limit (map-nested-elt event '(:data :meta _claude/rateLimit))))
+             (with-current-buffer buffer
+               (when (and (numberp used) (numberp size) (> size 0))
+                 (setq my/agent-context-percent (round (* 100.0 (/ used size)))))
+               (when-let ((account (my/agent-chat-account)))
+                 (when limit
+                   (puthash (format "%s" (plist-get account :id)) limit
+                            my/agent-usage)))))))))))
+
+(defun my/agent-usage-label (account)
+  "The agent's rate limit for ACCOUNT as \"34%\", or nil when none was reported."
+  (when-let* ((limit (gethash (format "%s" (plist-get account :id)) my/agent-usage))
+              (utilization (map-elt limit 'utilization)))
+    (format "%s%%" (round utilization))))
+
 (defun my/agent-chat-model-label ()
   "The model the current chat runs, from its session options, or nil."
   (when (derived-mode-p 'agent-shell-mode)
@@ -165,17 +202,22 @@ It starts in the chat's directory and is reused for that project."
   (doom-modeline-def-segment agent-chat
     "The chat's account and model, shown in the centre of the modeline."
     (when-let ((account (my/agent-chat-account)))
-      (let ((model (my/agent-chat-model-label)))
+      (let ((model (my/agent-chat-model-label))
+            (limit (my/agent-usage-label account)))
         (concat (propertize (format " %s " (agent-desk-icon-letter account))
                             'face `(:background ,(agent-desk-icon-color account)
                                     :foreground "#ffffff" :weight bold))
-                (when model (format "  %s" model))))))
+                (when model (format "  %s" model))
+                (when my/agent-context-percent
+                  (format "  ctx %d%%" my/agent-context-percent))
+                (when limit (format "  5h %s" limit))))))
   (doom-modeline-def-modeline 'agent-chat
     '(bar window-number modal buffer-info)
     '(agent-chat misc-info major-mode process)))
 
 (add-hook 'agent-shell-mode-hook
           (lambda ()
+            (my/agent-usage-subscribe)
             (when (fboundp 'doom-modeline-set-modeline)
               (doom-modeline-set-modeline 'agent-chat))))
 
