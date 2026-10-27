@@ -225,8 +225,13 @@ a display-space first character would make it loop forever in redisplay."
 
 ;;; Devil mode
 
-(setq devil-lighter " \U0001F608"
-      devil-prompt "\U0001F608 %t")
+;; The emoji font is taller than the editor font; at full size it makes the
+;; echo area grow while devil reads a key, so the mode line jumps.
+(defconst my/devil-emoji (propertize "\U0001F608" 'face '(:height 0.8))
+  "The devil emoji, scaled to fit within a normal line.")
+
+(setq devil-lighter (concat " " my/devil-emoji)
+      devil-prompt (concat my/devil-emoji " %t"))
 (global-devil-mode)
 
 (when (eq my/platform 'macos)
