@@ -538,6 +538,10 @@ ARG is passed to `agent-shell-yank-dwim'."
 ;; first use (`M-x agent-desk'); registering adds the copies to agent-shell's
 ;; picker too.  Log an account in once with its CLI, e.g.
 ;; CLAUDE_CONFIG_DIR=~/.claude-2 claude, or CODEX_HOME=~/.codex-multi-2 codex login.
+(defvar my/antigravity-acp-server
+  (expand-file-name "~/.local/share/agy-acp-server/agy_acp_server.par")
+  "The Antigravity ACP server binary.")
+
 (use-package! agent-desk
   :commands (agent-desk agent-desk-new-chat agent-desk-toggle-sidebar
              agent-desk-toggle-details)
@@ -551,6 +555,16 @@ ARG is passed to `agent-shell-yank-dwim'."
           (:id codex-main :provider codex :label "Codex" :home "~/.codex")
           (:id codex-2 :provider codex :label "Codex·2" :home "~/.codex-multi-2"
            :color "#9ece6a")))
+  ;; Antigravity's ACP server is a separate download from the ACP registry,
+  ;; unpacked into `my/antigravity-acp-server''s directory.  The account
+  ;; shows up only once it is there.
+  (when (file-executable-p my/antigravity-acp-server)
+    (setq agent-shell-antigravity-acp-command
+          (cons my/antigravity-acp-server
+                (and (eq my/platform 'linux) '("--uid="))))
+    (add-to-list 'agent-desk-accounts
+                 '(:id antigravity :provider antigravity :label "Antigravity")
+                 t))
   :config
   (agent-desk-register))
 
