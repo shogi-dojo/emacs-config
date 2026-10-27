@@ -148,31 +148,41 @@ a display-space first character would make it loop forever in redisplay."
         tab-bar-tab-name-format-close-button
         tab-bar-tab-name-format-face))
 
-;; Flat glyph buttons instead of tab-bar's images, which get a raised box
-;; on hover.  The close button ends in a space that is the tab's right
-;; padding; it carries `close-tab' so auto-width still sees the button at
-;; the end.  Tab-bar reloads its buttons whenever the mode turns on, so
-;; replace them then.
-(defface my/tab-bar-button '((t :inherit shadow))
-  "Face for the tab bar's close and new-tab glyphs.")
+;; Crisp SVG close and new-tab buttons in the theme's colours.  Tab-bar
+;; only gives image buttons hover and click feedback: a 1px raised outline
+;; on hover (`tab-bar-button-relief') and a sunken one while pressed.
+;; Each button is one character, so auto-width finds the close button at
+;; the tab's end, and image margins give the padding around it.  Tab-bar
+;; reloads its buttons whenever the mode turns on, so replace them then.
+(defvar my/tab-bar-button-size 16
+  "Pixel size of the tab bar's close and new-tab icons.")
 
-(defun my/tab-bar--glyph (icon fallback)
-  "Return nerd-icons material ICON in `my/tab-bar-button', or FALLBACK."
-  (if (require 'nerd-icons nil t)
-      (nerd-icons-mdicon icon :face 'my/tab-bar-button :height 0.85 :v-adjust 0.05)
-    (propertize fallback 'face 'my/tab-bar-button)))
+(defun my/tab-bar--icon (kind color margin)
+  "Return an SVG image of KIND (`close' or `new') drawn in COLOR.
+MARGIN is the horizontal space in pixels on each side."
+  (require 'svg)
+  (let* ((size my/tab-bar-button-size)
+         (svg (svg-create size size))
+         (lo (* size 0.3))
+         (hi (- size lo))
+         (mid (/ size 2.0))
+         (stroke (list :stroke-color color :stroke-width 1.5 :stroke-linecap "round")))
+    (pcase kind
+      ('close (apply #'svg-line svg lo lo hi hi stroke)
+              (apply #'svg-line svg hi lo lo hi stroke))
+      ('new (apply #'svg-line svg mid lo mid hi stroke)
+            (apply #'svg-line svg lo mid hi mid stroke)))
+    (svg-image svg :ascent 'center :margin (cons margin 0))))
 
 (defun my/tab-bar-style-buttons (&rest _)
-  "Replace tab-bar's close and new-tab images with flat glyphs."
-  (setq tab-bar-close-button
-        (propertize (concat (my/tab-bar--pad 8)
-                            (my/tab-bar--glyph "nf-md-close" "×")
-                            "  ")
-                    'close-tab t
-                    'help-echo "Close tab")
-        tab-bar-new-button
-        (propertize (concat "  " (my/tab-bar--glyph "nf-md-plus" "+") "  ")
-                    'help-echo "New tab")))
+  "Replace tab-bar's close and new-tab buttons with themed SVG icons."
+  (let ((color (if (fboundp 'doom-color) (doom-color 'base5) "gray60")))
+    (setq tab-bar-close-button
+          (propertize " " 'display (my/tab-bar--icon 'close color 7)
+                      'close-tab t 'help-echo "Close tab")
+          tab-bar-new-button
+          (propertize " " 'display (my/tab-bar--icon 'new color 9)
+                      'help-echo "New tab"))))
 
 (advice-add 'tab-bar--load-buttons :after #'my/tab-bar-style-buttons)
 
@@ -191,15 +201,13 @@ a display-space first character would make it loop forever in redisplay."
                         :inherit 'tab-bar :background active
                         :foreground (doom-color 'fg) :weight 'semi-bold
                         :box `(:line-width ,vertical :color ,active))
-    (set-face-attribute 'my/tab-bar-button nil
-                        :inherit 'unspecified :foreground (doom-color 'base5)
-                        :weight 'normal)
     (set-face-attribute 'tab-bar-tab-inactive nil
                         :inherit 'tab-bar :background bar
                         :foreground (doom-color 'base6) :weight 'normal
                         :box `(:line-width ,vertical :color ,bar))))
 
 (add-hook 'doom-load-theme-hook #'my/tab-bar-apply-faces)
+(add-hook 'doom-load-theme-hook #'my/tab-bar-style-buttons)
 
 ;;; Behavior
 
@@ -596,8 +604,9 @@ ARG is passed to `agent-shell-yank-dwim'."
                  t))
   :config
   (agent-desk-register)
-  ;; Files opened from the Agents tab go to a code tab instead.
-  (agent-desk-separate-files-mode 1))
+  ;; Chats live only in the Agents tab and code everywhere else; buffer
+  ;; switching in each tab offers only its own kind.
+  (agent-desk-separation-mode 1))
 
 ;;; Platform keybindings
 
