@@ -690,6 +690,8 @@ ARG is passed to `agent-shell-yank-dwim'."
 (load! (format "platforms/keybindings-%s" my/platform))
 (my/apply-platform-keybindings)
 
+(load! "agent-view")
+
 ;;; Civet
 
 (use-package! civet-mode
