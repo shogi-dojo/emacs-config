@@ -566,7 +566,9 @@ ARG is passed to `agent-shell-yank-dwim'."
                  '(:id antigravity :provider antigravity :label "Antigravity")
                  t))
   :config
-  (agent-desk-register))
+  (agent-desk-register)
+  ;; Files opened from the Agents tab go to a code tab instead.
+  (agent-desk-separate-files-mode 1))
 
 ;;; Platform keybindings
 
