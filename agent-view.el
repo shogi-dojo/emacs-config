@@ -212,7 +212,7 @@ It is the agent's `_claude/rateLimit' metadata.")
                   (format "  ctx %d%%" my/agent-context-percent))
                 (when limit (format "  5h %s" limit))))))
   (doom-modeline-def-modeline 'agent-chat
-    '(bar window-number modal buffer-info)
+    '(bar window-number modals buffer-info)
     '(agent-chat misc-info major-mode process)))
 
 (add-hook 'agent-shell-mode-hook
@@ -228,3 +228,6 @@ It is the agent's `_claude/rateLimit' metadata.")
                 (when (window-live-p window)
                   (set-window-parameter window 'mode-line-format 'none))
                 window)))
+
+(provide 'agent-view)
+;;; agent-view.el ends here
