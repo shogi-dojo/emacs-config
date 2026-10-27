@@ -610,7 +610,11 @@ ARG is passed to `agent-shell-yank-dwim'."
   (agent-desk-register)
   ;; Chats live only in the Agents tab and code everywhere else; buffer
   ;; switching in each tab offers only its own kind.
-  (agent-desk-separation-mode 1))
+  (agent-desk-separation-mode 1)
+  ;; Mirror chats to the Desk Remote phone app through the bridge, which runs
+  ;; only on the Mac.  The noerror require keeps branches without it working.
+  (when (and (eq my/platform 'macos) (require 'agent-desk-remote nil t))
+    (agent-desk-remote-mode 1)))
 
 ;;; Platform keybindings
 
