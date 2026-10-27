@@ -41,11 +41,15 @@
 
 ;; Refresh unmodified file buffers; auto-revert preserves unsaved edits.
 ;; Doom's own autorevert :config resets these on load, so set them after it.
+;; File buffers revert through file notifications, so the poll only covers
+;; buffers without one.  `auto-revert-check-vc-info' stays off: it runs git
+;; synchronously for every buffer on every tick, which froze Emacs in big
+;; repos while agents edited files.
 (after! autorevert
-  (setq auto-revert-interval 1
+  (setq auto-revert-interval 5
         auto-revert-use-notify t
         auto-revert-verbose nil
-        auto-revert-check-vc-info t
+        auto-revert-check-vc-info nil
         global-auto-revert-non-file-buffers t))
 (global-auto-revert-mode 1)
 
