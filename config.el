@@ -483,6 +483,8 @@ If `visual-line-mode' is on, consider line as visual line."
 ;;; File associations
 
 (add-to-list 'auto-mode-alist '("\\.env\\(?:\\..*\\)?\\'" . dotenv-mode))
+;; ES modules and CommonJS files are plain JavaScript.
+(add-to-list 'auto-mode-alist '("\\.[cm]js\\'" . js-mode))
 
 ;;; Magit
 
