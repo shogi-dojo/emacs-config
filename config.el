@@ -92,6 +92,123 @@
 (when (fboundp 'context-menu-mode)
   (context-menu-mode 1))
 
+;;; Tab bar
+
+;; Sublime-like tabs: taller, padded, a UI font, a file-type icon, the
+;; selected tab in the editor background and the rest in the bar colour.
+(defvar my/tab-bar-font-families
+  '("SF Pro Text" "SF Pro" "Helvetica Neue" "Inter" "Cantarell" "Noto Sans")
+  "UI fonts tried in order for tab labels; the editor font is the fallback.")
+
+(defvar my/tab-bar-named-icons
+  '(("Agents" . (nerd-icons-mdicon "nf-md-robot_outline")))
+  "Icons for renamed tabs, whose names are not buffer names.")
+
+(defun my/tab-bar--pad (pixels)
+  "Return a blank of PIXELS width."
+  (propertize " " 'display `(space :width (,pixels))))
+
+(defun my/tab-bar--tab-buffer (tab)
+  "Return the buffer TAB shows, or nil."
+  (if (eq (car tab) 'current-tab)
+      (window-buffer (minibuffer-selected-window))
+    (get-buffer (alist-get 'name tab))))
+
+(defun my/tab-bar-tab-icon (tab)
+  "Return the icon for TAB: a named icon, its buffer's icon, or a file."
+  (let ((named (assoc (alist-get 'name tab) my/tab-bar-named-icons))
+        (buffer (my/tab-bar--tab-buffer tab)))
+    (cond (named (eval (cdr named) t))
+          (buffer (with-current-buffer buffer (nerd-icons-icon-for-buffer)))
+          (t (nerd-icons-faicon "nf-fa-file_o")))))
+
+(defun my/tab-bar-format-icon (name tab _i)
+  "Prefix NAME with padding and TAB's icon.
+The padding is plain spaces: `tab-bar-auto-width' widens a tab by copying
+its first character, and copies of a `display' space merge into one, so
+a display-space first character would make it loop forever in redisplay."
+  (concat "   "
+          (if (require 'nerd-icons nil t)
+              ;; A display space is safe here, away from the first character.
+              (concat (or (ignore-errors (my/tab-bar-tab-icon tab)) "")
+                      (my/tab-bar--pad 10))
+            "")
+          name))
+
+(setq tab-bar-separator (my/tab-bar--pad 1)
+      ;; Short names keep tabs under the maximum width: past it, auto-width
+      ;; shrinks a tab by deleting characters at the close button.
+      tab-bar-tab-name-function #'tab-bar-tab-name-truncated
+      tab-bar-tab-name-truncated-max 22
+      tab-bar-close-button-show t
+      tab-bar-auto-width-min '((150) 14)
+      tab-bar-auto-width-max '((280) 26)
+      tab-bar-tab-name-format-functions
+      '(my/tab-bar-format-icon
+        tab-bar-tab-name-format-close-button
+        tab-bar-tab-name-format-face))
+
+;; Crisp SVG close and new-tab buttons in the theme's colours.  Tab-bar
+;; only gives image buttons hover and click feedback: a 1px raised outline
+;; on hover (`tab-bar-button-relief') and a sunken one while pressed.
+;; Each button is one character, so auto-width finds the close button at
+;; the tab's end, and image margins give the padding around it.  Tab-bar
+;; reloads its buttons whenever the mode turns on, so replace them then.
+(defvar my/tab-bar-button-size 16
+  "Pixel size of the tab bar's close and new-tab icons.")
+
+(defun my/tab-bar--icon (kind color margin)
+  "Return an SVG image of KIND (`close' or `new') drawn in COLOR.
+MARGIN is the horizontal space in pixels on each side."
+  (require 'svg)
+  (let* ((size my/tab-bar-button-size)
+         (svg (svg-create size size))
+         (lo (* size 0.3))
+         (hi (- size lo))
+         (mid (/ size 2.0))
+         (stroke (list :stroke-color color :stroke-width 1.5 :stroke-linecap "round")))
+    (pcase kind
+      ('close (apply #'svg-line svg lo lo hi hi stroke)
+              (apply #'svg-line svg hi lo lo hi stroke))
+      ('new (apply #'svg-line svg mid lo mid hi stroke)
+            (apply #'svg-line svg lo mid hi mid stroke)))
+    (svg-image svg :ascent 'center :margin (cons margin 0))))
+
+(defun my/tab-bar-style-buttons (&rest _)
+  "Replace tab-bar's close and new-tab buttons with themed SVG icons."
+  (let ((color (if (fboundp 'doom-color) (doom-color 'base5) "gray60")))
+    (setq tab-bar-close-button
+          (propertize " " 'display (my/tab-bar--icon 'close color 7)
+                      'close-tab t 'help-echo "Close tab")
+          tab-bar-new-button
+          (propertize " " 'display (my/tab-bar--icon 'new color 9)
+                      'help-echo "New tab"))))
+
+(advice-add 'tab-bar--load-buttons :after #'my/tab-bar-style-buttons)
+
+(defun my/tab-bar-apply-faces ()
+  "Restyle the tab bar from the current theme's palette."
+  (let ((bar (doom-color 'bg-alt))
+        (active (doom-color 'bg))
+        (family (seq-find (lambda (f) (find-font (font-spec :family f)))
+                          my/tab-bar-font-families))
+        (vertical '(1 . 8)))
+    (set-face-attribute 'tab-bar nil
+                        :family (or family 'unspecified) :height 1.0
+                        :background bar :foreground (doom-color 'base5)
+                        :box `(:line-width (1 . 2) :color ,bar))
+    (set-face-attribute 'tab-bar-tab nil
+                        :inherit 'tab-bar :background active
+                        :foreground (doom-color 'fg) :weight 'semi-bold
+                        :box `(:line-width ,vertical :color ,active))
+    (set-face-attribute 'tab-bar-tab-inactive nil
+                        :inherit 'tab-bar :background bar
+                        :foreground (doom-color 'base6) :weight 'normal
+                        :box `(:line-width ,vertical :color ,bar))))
+
+(add-hook 'doom-load-theme-hook #'my/tab-bar-apply-faces)
+(add-hook 'doom-load-theme-hook #'my/tab-bar-style-buttons)
+
 ;;; Behavior
 
 (setq org-directory "~/org/"
@@ -116,8 +233,13 @@
 
 ;;; Devil mode
 
-(setq devil-lighter " \U0001F608"
-      devil-prompt "\U0001F608 %t")
+;; The emoji font is taller than the editor font; at full size it makes the
+;; echo area grow while devil reads a key, so the mode line jumps.
+(defconst my/devil-emoji (propertize "\U0001F608" 'face '(:height 0.8))
+  "The devil emoji, scaled to fit within a normal line.")
+
+(setq devil-lighter (concat " " my/devil-emoji)
+      devil-prompt (concat my/devil-emoji " %t"))
 (global-devil-mode)
 
 (when (eq my/platform 'macos)
@@ -396,18 +518,95 @@ If `visual-line-mode' is on, consider line as visual line."
 ;;; File associations
 
 (add-to-list 'auto-mode-alist '("\\.env\\(?:\\..*\\)?\\'" . dotenv-mode))
+;; ES modules and CommonJS files are plain JavaScript.
+(add-to-list 'auto-mode-alist '("\\.[cm]js\\'" . js-mode))
+
+;;; Magit
+
+;; Magit truncates long lines; wrap them instead so diffs fit narrow windows.
+(defvar my/magit-wrap-lines t
+  "Whether Magit buffers wrap long lines instead of truncating them.")
+
+(defun my/magit-apply-wrap ()
+  "Wrap or truncate the current Magit buffer per `my/magit-wrap-lines'."
+  (setq-local truncate-lines (not my/magit-wrap-lines)
+              word-wrap my/magit-wrap-lines))
+
+(defun my/magit-toggle-wrap ()
+  "Toggle line wrapping in all Magit buffers, open now and opened later."
+  (interactive)
+  (setq my/magit-wrap-lines (not my/magit-wrap-lines))
+  (dolist (buffer (buffer-list))
+    (with-current-buffer buffer
+      (when (derived-mode-p 'magit-mode)
+        (my/magit-apply-wrap))))
+  (message "Magit line wrapping %s" (if my/magit-wrap-lines "on" "off")))
+
+(add-hook 'magit-mode-hook #'my/magit-apply-wrap)
 
 ;;; Agent Shell
 
 (require 'acp nil t)
 (require 'agent-shell nil t)
 
+;; Reopening a chat replays its whole conversation, not just its title.
+(setq agent-shell-session-restore-verbosity 'full)
+
 ;; agent-shell pastes clipboard images by remapping `yank'; the platform paste
-;; key runs `clipboard-yank', so remap that too.
+;; key runs `clipboard-yank', so remap that too.  Text falls back to `yank',
+;; which skips the system clipboard while `select-enable-clipboard' is nil, so
+;; turn it on for this paste as `clipboard-yank' does.
+(defun my/agent-shell-clipboard-yank (&optional arg)
+  "Paste a clipboard image, or the clipboard's text, into agent-shell.
+ARG is passed to `agent-shell-yank-dwim'."
+  (interactive "*P")
+  (let ((select-enable-clipboard t))
+    (agent-shell-yank-dwim arg)))
+
 (after! agent-shell
-  (define-key agent-shell-mode-map [remap clipboard-yank] #'agent-shell-yank-dwim))
+  (define-key agent-shell-mode-map [remap clipboard-yank] #'my/agent-shell-clipboard-yank))
 (after! agent-shell-viewport
-  (define-key agent-shell-viewport-edit-mode-map [remap clipboard-yank] #'agent-shell-yank-dwim))
+  (define-key agent-shell-viewport-edit-mode-map [remap clipboard-yank]
+              #'my/agent-shell-clipboard-yank))
+
+;;; Agent desk
+
+;; One agent-shell copy per account, each with its own config dir.  Loaded on
+;; first use (`M-x agent-desk'); registering adds the copies to agent-shell's
+;; picker too.  Log an account in once with its CLI, e.g.
+;; CLAUDE_CONFIG_DIR=~/.claude-2 claude, or CODEX_HOME=~/.codex-multi-2 codex login.
+(defvar my/antigravity-acp-server
+  (expand-file-name "~/.local/share/agy-acp-server/agy_acp_server.par")
+  "The Antigravity ACP server binary.")
+
+(use-package! agent-desk
+  :commands (agent-desk agent-desk-new-chat agent-desk-toggle-sidebar
+             agent-desk-toggle-details)
+  :init
+  (setq agent-desk-accounts
+        '((:id claude-main :provider claude :label "Claude" :home "~/.claude")
+          (:id claude-2 :provider claude :label "Claude·2" :home "~/.claude-2"
+           :color "#e0a35a")
+          (:id claude-gui2 :provider claude :label "Claude·G2" :home "~/.claude-gui-2"
+           :color "#7aa2f7")
+          (:id codex-main :provider codex :label "Codex" :home "~/.codex")
+          (:id codex-2 :provider codex :label "Codex·2" :home "~/.codex-multi-2"
+           :color "#9ece6a")))
+  ;; Antigravity's ACP server is a separate download from the ACP registry,
+  ;; unpacked into `my/antigravity-acp-server''s directory.  The account
+  ;; shows up only once it is there.
+  (when (file-executable-p my/antigravity-acp-server)
+    (setq agent-shell-antigravity-acp-command
+          (cons my/antigravity-acp-server
+                (and (eq my/platform 'linux) '("--uid="))))
+    (add-to-list 'agent-desk-accounts
+                 '(:id antigravity :provider antigravity :label "Antigravity")
+                 t))
+  :config
+  (agent-desk-register)
+  ;; Chats live only in the Agents tab and code everywhere else; buffer
+  ;; switching in each tab offers only its own kind.
+  (agent-desk-separation-mode 1))
 
 ;;; Platform keybindings
 

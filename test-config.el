@@ -224,6 +224,67 @@
         (end-of-file nil)
         (error (ert-fail (format "Parse error in packages.el: %s" err)))))))
 
+(ert-deftest test-agent-desk-is-a-local-package ()
+  "agent-desk should come from its local checkout, only where it exists."
+  (let* ((dir (file-name-directory (or load-file-name
+                                       buffer-file-name
+                                       default-directory)))
+         (forms (with-temp-buffer
+                  (insert-file-contents (expand-file-name "packages.el" dir))
+                  (let (forms)
+                    (condition-case nil
+                        (while t (push (read (current-buffer)) forms))
+                      (end-of-file nil))
+                    forms)))
+         (guard (seq-find (lambda (form)
+                            (and (eq (car-safe form) 'when)
+                                 (equal (cadr form)
+                                        '(file-directory-p "~/projects/emacs/agent-desk"))))
+                          forms))
+         (decl (seq-find (lambda (form)
+                           (equal (seq-take form 2) '(package! agent-desk)))
+                         (cddr guard)))
+         (recipe (plist-get (cddr decl) :recipe)))
+    (should decl)
+    (should (equal (plist-get recipe :local-repo) "~/projects/emacs/agent-desk"))
+    (should-not (plist-get recipe :host))))
+
+(defun test-config--find-setq (form var)
+  "Return the value form assigned to VAR by a `setq' anywhere inside FORM."
+  (when (consp form)
+    (or (and (eq (car form) 'setq)
+             (let ((tail (cdr form)) found)
+               (while (and tail (not found))
+                 (when (eq (car tail) var) (setq found (list (cadr tail))))
+                 (setq tail (cddr tail)))
+               (car found)))
+        (seq-some (lambda (child) (test-config--find-setq child var))
+                  (seq-filter #'consp (if (proper-list-p form) form (list (car form))))))))
+
+(ert-deftest test-agent-desk-accounts-are-distinct ()
+  "Each agent-desk account needs a unique id, a known provider and its own home."
+  (let* ((dir (file-name-directory (or load-file-name
+                                       buffer-file-name
+                                       default-directory)))
+         (accounts
+          (with-temp-buffer
+            (insert-file-contents (expand-file-name "config.el" dir))
+            (let (value)
+              (condition-case nil
+                  (while (not value)
+                    (setq value (test-config--find-setq (read (current-buffer))
+                                                        'agent-desk-accounts)))
+                (end-of-file nil))
+              (eval value t))))
+         (ids (mapcar (lambda (a) (plist-get a :id)) accounts))
+         (homes (mapcar (lambda (a) (expand-file-name (plist-get a :home))) accounts)))
+    (should (= (length accounts) 5))
+    (should (equal ids (seq-uniq ids)))
+    (should (equal homes (seq-uniq homes)))
+    (dolist (account accounts)
+      (should (memq (plist-get account :provider) '(claude codex)))
+      (should (stringp (plist-get account :label))))))
+
 (ert-deftest test-all-platform-files-parse ()
   "All platform .el files should be valid elisp."
   (let ((dir (file-name-directory (or load-file-name
