@@ -114,6 +114,14 @@ The agent's badge is a letter in the account colour, as in the sidebar."
             (let ((eshell-buffer-name name))
               (eshell t)))))))
 
+(defun my/agent-chat-window ()
+  "The window to split for the terminal: the selected one, unless it is a
+dedicated side panel, which is never split; then the largest ordinary window."
+  (let ((window (selected-window)))
+    (if (window-dedicated-p window)
+        (or (get-largest-window nil nil t) window)
+      window)))
+
 (defun my/agent-toggle-terminal ()
   "Open or close the project terminal under the chat window.
 It starts in the chat's directory and is reused for that project."
@@ -122,7 +130,7 @@ It starts in the chat's directory and is reused for that project."
          (shown (get-buffer-window buffer)))
     (if shown
         (delete-window shown)
-      (let* ((chat (or (get-buffer-window (current-buffer)) (selected-window)))
+      (let* ((chat (my/agent-chat-window))
              (below (split-window chat (round (* (- 1 my/agent-terminal-height)
                                                  (window-total-height chat)))
                                   'below)))
@@ -182,7 +190,8 @@ It is the agent's `_claude/rateLimit' metadata.")
 (defun my/agent-usage-label (account)
   "The agent's rate limit for ACCOUNT as \"34%\", or nil when none was reported."
   (when-let* ((limit (gethash (format "%s" (plist-get account :id)) my/agent-usage))
-              (utilization (map-elt limit 'utilization)))
+              (utilization (ignore-errors (map-elt limit 'utilization)))
+              ((numberp utilization)))
     (format "%s%%" (round utilization))))
 
 (defun my/agent-chat-model-label ()
