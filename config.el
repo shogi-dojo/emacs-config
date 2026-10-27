@@ -136,6 +136,10 @@ a display-space first character would make it loop forever in redisplay."
           name))
 
 (setq tab-bar-separator (my/tab-bar--pad 1)
+      ;; Short names keep tabs under the maximum width: past it, auto-width
+      ;; shrinks a tab by deleting characters at the close button.
+      tab-bar-tab-name-function #'tab-bar-tab-name-truncated
+      tab-bar-tab-name-truncated-max 22
       tab-bar-close-button-show t
       tab-bar-auto-width-min '((150) 14)
       tab-bar-auto-width-max '((280) 26)
@@ -144,18 +148,33 @@ a display-space first character would make it loop forever in redisplay."
         tab-bar-tab-name-format-close-button
         tab-bar-tab-name-format-face))
 
-;; The tab's right padding is a space after the close button.  It must
-;; carry `close-tab' so auto-width still sees the button at the end.
-;; Tab-bar reloads its buttons whenever the mode turns on, so add it then.
-(defun my/tab-bar-pad-close-button (&rest _)
-  "Append a clickable space to `tab-bar-close-button'."
-  (unless (get-text-property 0 'my/padded tab-bar-close-button)
-    (setq tab-bar-close-button
-          (propertize (concat tab-bar-close-button
-                              (propertize " " 'close-tab t))
-                      'my/padded t))))
+;; Flat glyph buttons instead of tab-bar's images, which get a raised box
+;; on hover.  The close button ends in a space that is the tab's right
+;; padding; it carries `close-tab' so auto-width still sees the button at
+;; the end.  Tab-bar reloads its buttons whenever the mode turns on, so
+;; replace them then.
+(defface my/tab-bar-button '((t :inherit shadow))
+  "Face for the tab bar's close and new-tab glyphs.")
 
-(advice-add 'tab-bar--load-buttons :after #'my/tab-bar-pad-close-button)
+(defun my/tab-bar--glyph (icon fallback)
+  "Return nerd-icons material ICON in `my/tab-bar-button', or FALLBACK."
+  (if (require 'nerd-icons nil t)
+      (nerd-icons-mdicon icon :face 'my/tab-bar-button :height 0.85 :v-adjust 0.05)
+    (propertize fallback 'face 'my/tab-bar-button)))
+
+(defun my/tab-bar-style-buttons (&rest _)
+  "Replace tab-bar's close and new-tab images with flat glyphs."
+  (setq tab-bar-close-button
+        (propertize (concat (my/tab-bar--pad 8)
+                            (my/tab-bar--glyph "nf-md-close" "×")
+                            "  ")
+                    'close-tab t
+                    'help-echo "Close tab")
+        tab-bar-new-button
+        (propertize (concat "  " (my/tab-bar--glyph "nf-md-plus" "+") "  ")
+                    'help-echo "New tab")))
+
+(advice-add 'tab-bar--load-buttons :after #'my/tab-bar-style-buttons)
 
 (defun my/tab-bar-apply-faces ()
   "Restyle the tab bar from the current theme's palette."
@@ -172,6 +191,9 @@ a display-space first character would make it loop forever in redisplay."
                         :inherit 'tab-bar :background active
                         :foreground (doom-color 'fg) :weight 'semi-bold
                         :box `(:line-width ,vertical :color ,active))
+    (set-face-attribute 'my/tab-bar-button nil
+                        :inherit 'unspecified :foreground (doom-color 'base5)
+                        :weight 'normal)
     (set-face-attribute 'tab-bar-tab-inactive nil
                         :inherit 'tab-bar :background bar
                         :foreground (doom-color 'base6) :weight 'normal
