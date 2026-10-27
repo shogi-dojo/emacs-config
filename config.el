@@ -484,6 +484,29 @@ If `visual-line-mode' is on, consider line as visual line."
 
 (add-to-list 'auto-mode-alist '("\\.env\\(?:\\..*\\)?\\'" . dotenv-mode))
 
+;;; Magit
+
+;; Magit truncates long lines; wrap them instead so diffs fit narrow windows.
+(defvar my/magit-wrap-lines t
+  "Whether Magit buffers wrap long lines instead of truncating them.")
+
+(defun my/magit-apply-wrap ()
+  "Wrap or truncate the current Magit buffer per `my/magit-wrap-lines'."
+  (setq-local truncate-lines (not my/magit-wrap-lines)
+              word-wrap my/magit-wrap-lines))
+
+(defun my/magit-toggle-wrap ()
+  "Toggle line wrapping in all Magit buffers, open now and opened later."
+  (interactive)
+  (setq my/magit-wrap-lines (not my/magit-wrap-lines))
+  (dolist (buffer (buffer-list))
+    (with-current-buffer buffer
+      (when (derived-mode-p 'magit-mode)
+        (my/magit-apply-wrap))))
+  (message "Magit line wrapping %s" (if my/magit-wrap-lines "on" "off")))
+
+(add-hook 'magit-mode-hook #'my/magit-apply-wrap)
+
 ;;; Agent Shell
 
 (require 'acp nil t)
