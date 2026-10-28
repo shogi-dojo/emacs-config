@@ -58,6 +58,14 @@
 (setq doom-theme 'doom-dracula
       doom-font (font-spec :family my/font-family :size my/font-size))
 
+;; Proportional text (chat prose through mixed-pitch, which copies this face)
+;; in Inter, a wide open sans (brew install --cask font-inter).  Unset, it is
+;; "Sans Serif", which macOS draws in narrow Tahoma.
+(when (display-graphic-p)
+  (when-let ((family (seq-find (lambda (f) (find-font (font-spec :family f)))
+                               '("Inter" "Inter Variable" "SF Pro Text" "Helvetica Neue"))))
+    (setq doom-variable-pitch-font (font-spec :family family))))
+
 (add-hook 'after-setting-font-hook
           (lambda ()
             (let ((cjk-font (font-spec :family my/cjk-font-family))

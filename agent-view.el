@@ -35,11 +35,19 @@
     agent-shell-markdown-table-zebra)
   "Chat faces that stay fixed-pitch: code, tables and their borders.")
 
+(defvar my/agent-prose-families
+  '("Inter" "Inter Variable" "SF Pro Text" "Helvetica Neue")
+  "Proportional fonts tried in order for chat prose.
+Inter (brew install --cask font-inter) is wide and open, the closest free
+match to Claude's own sans.  A font installed while Emacs runs may show up
+only as \"Inter Variable\" until a restart.")
+
 (defun my/agent-prose-family ()
-  "The proportional font for chat prose: Inter when installed, else SF Pro Text."
-  (if (and (display-graphic-p) (find-font (font-spec :family "Inter")))
-      "Inter"
-    "SF Pro Text"))
+  "The first installed font of `my/agent-prose-families'."
+  (or (and (display-graphic-p)
+           (seq-find (lambda (family) (find-font (font-spec :family family)))
+                     my/agent-prose-families))
+      "Helvetica Neue"))
 
 (defun my/agent-header-hover ()
   "Make hovering the chat header a subtle lift instead of the theme's violet.
@@ -57,6 +65,20 @@ The header's model and mode text is violet too, and vanished under it."
   (face-remap-add-relative 'variable-pitch
                            :family (my/agent-prose-family)
                            :height my/agent-prose-height))
+
+(defun my/agent-prose-after-solaire ()
+  "Put mixed-pitch's proportional font back in front of solaire's remap.
+Solaire turns on after the mode hooks; its face inherits `default', so as
+the newer remap it would bring the monospace font back over the prose.
+Attribute lists (mixed-pitch's) go first, face names (solaire's) after."
+  (when-let* (((derived-mode-p 'agent-shell-mode))
+              (specs (cdr (assq 'default face-remapping-alist))))
+    (setq-local face-remapping-alist
+                (cons (cons 'default (append (seq-filter #'consp specs)
+                                             (seq-remove #'consp specs)))
+                      (assq-delete-all 'default (copy-sequence face-remapping-alist))))))
+
+(add-hook 'solaire-mode-hook #'my/agent-prose-after-solaire)
 
 (use-package! mixed-pitch
   :commands mixed-pitch-mode
