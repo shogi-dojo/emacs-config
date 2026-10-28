@@ -40,8 +40,18 @@
       "Inter"
     "SF Pro Text"))
 
+(defun my/agent-header-hover ()
+  "Make hovering the chat header a subtle lift instead of the theme's violet.
+The header's model and mode text is violet too, and vanished under it."
+  (let ((background (or (face-background 'region nil t)
+                        (face-background 'hl-line nil t))))
+    (dolist (face '(mode-line-highlight header-line-highlight))
+      (face-remap-add-relative face :background background :foreground 'unspecified
+                               :box nil :inverse-video nil))))
+
 (defun my/agent-shell-prose ()
   "Give a chat buffer proportional prose; code and tables stay fixed-pitch."
+  (my/agent-header-hover)
   (mixed-pitch-mode 1)
   (face-remap-add-relative 'variable-pitch
                            :family (my/agent-prose-family)
