@@ -257,6 +257,17 @@ The agent's badge is a letter in the account colour, as in the sidebar."
             (let ((eshell-buffer-name name))
               (eshell t)))))))
 
+(defun my/agent-terminal-directory ()
+  "The folder for the terminal: the chat's project when it has one.
+A chat buffer's own `default-directory' is often ~, so ask agent-desk."
+  (or (when-let* ((thread (bound-and-true-p agent-desk--thread-id))
+                  ((fboundp 'agent-desk-store-get-thread))
+                  (row (agent-desk-store-get-thread thread))
+                  (cwd (plist-get row :cwd))
+                  ((file-directory-p cwd)))
+        cwd)
+      default-directory))
+
 (defun my/agent-chat-window ()
   "The window to split for the terminal: the selected one, unless it is a
 dedicated side panel, which is never split; then the largest ordinary window."
@@ -267,9 +278,12 @@ dedicated side panel, which is never split; then the largest ordinary window."
 
 (defun my/agent-toggle-terminal ()
   "Open or close the project terminal under the chat window.
-It starts in the chat's directory and is reused for that project."
+It starts in the chat's directory and is reused for that project.  From
+inside a terminal it closes that one, wherever its shell has cd'd to."
   (interactive)
-  (let* ((buffer (my/agent-terminal-buffer default-directory))
+  (let* ((buffer (if (string-prefix-p "*agent-terminal " (buffer-name))
+                     (current-buffer)
+                   (my/agent-terminal-buffer (my/agent-terminal-directory))))
          (shown (get-buffer-window buffer)))
     (if shown
         (delete-window shown)

@@ -652,7 +652,8 @@ ARG is passed to `agent-shell-yank-dwim'."
   '(("x" . clipboard-kill-region)
     ("c" . clipboard-kill-ring-save)
     ("v" . clipboard-yank)
-    ("j" . crux-top-join-line)
+    ("j" . my/agent-toggle-terminal)
+    ("J" . crux-top-join-line)
     ("k" . crux-kill-whole-line)
     ("w" . kill-current-buffer)
     ("t" . treemacs)
@@ -738,4 +739,6 @@ ARG is passed to `agent-shell-yank-dwim'."
   (add-to-list 'load-path "/Users/mac/Documents/sublime.el")
   (when (require 'sublime nil t)
     (setq sublime-apply-font-size nil)
-    (sublime-mode 1)))
+    (sublime-mode 1)
+    ;; Cmd+J toggles the terminal popup; join line moves to Cmd+Shift+J.
+    (define-key sublime-mode-map (kbd "s-j") #'my/agent-toggle-terminal)))
