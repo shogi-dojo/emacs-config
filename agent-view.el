@@ -96,6 +96,9 @@ In the history above, clicks and drags still move point and select text."
   "Give a chat buffer proportional prose; code and tables stay fixed-pitch."
   (my/agent-header-hover)
   (my/agent-code-panels)
+  ;; No scroll bar: Emacs sizes its thumb from a sample of line heights, and
+  ;; a chat's folds, wrapped prose and tables make it jump as you scroll.
+  (setq-local vertical-scroll-bar nil)
   (add-hook 'post-command-hook #'my/agent-prompt-cursor nil t)
   (mixed-pitch-mode 1)
   (face-remap-add-relative 'variable-pitch
