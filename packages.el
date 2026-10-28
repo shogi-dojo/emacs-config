@@ -51,6 +51,7 @@
 (package! ag)
 (package! devil)
 (package! key-chord)
+(package! reverse-im)
 (package! easy-kill)
 (package! dockerfile-mode)
 (package! typescript-mode)

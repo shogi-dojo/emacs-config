@@ -282,13 +282,22 @@ MARGIN is the horizontal space in pixels on each side."
       devil-prompt (concat my/devil-emoji " %t"))
 (global-devil-mode)
 
-(when (eq my/platform 'macos)
-  (define-key devil-mode-map (kbd "б") #'devil)
-  (add-to-list 'devil-special-keys `("б б" . ,(devil-key-executor "б")))
-  (setq devil-translations '(("б" . "C-")
-                             (", ," . ",")
-                             ("б б" . "б")
-                             ("," . "C-"))))
+;;; Ukrainian layout
+
+;; With the macOS Ukrainian layout on, reverse-im maps every key pressed with
+;; Ctrl, Option (Meta) or Cmd (Super) to its Latin twin, so C-ч runs C-x and
+;; s-м pastes.  Plain keys stay text: devil's comma and the key chords sit on
+;; Ukrainian letters (б, л, ц), so they work on the English layout only.
+(use-package! reverse-im
+  :when (eq my/platform 'macos)
+  :demand t
+  :init
+  (setq reverse-im-input-methods '("ukrainian-computer")
+        reverse-im-cache-file (concat doom-cache-dir "reverse-im-cache.el")
+        ;; Dispatchers that read single keys with `read-char'.
+        reverse-im-read-char-advice-function #'reverse-im-read-char-include)
+  :config
+  (reverse-im-mode t))
 
 ;;; Find file across Treemacs projects
 
@@ -347,37 +356,6 @@ Falls back to `projectile-find-file' when the workspace has no projects."
 (key-chord-define-global "ww" 'switch-to-buffer)
 (key-chord-define-global "JJ" 'crux-switch-to-previous-buffer)
 (key-chord-define-global ";;" 'repeat)
-
-(when (eq my/platform 'macos)
-  (defvar my/multibyte-chords
-    '((?ц . switch-to-buffer)
-      (?л . my/find-file-in-treemacs-projects)
-      (?ч . execute-extended-command))
-    "Alist of (CHAR . COMMAND) for double-tap multibyte key chords.")
-
-  (defvar my/multibyte-chord--last-char nil)
-  (defvar my/multibyte-chord--last-time nil)
-
-  (defun my/multibyte-chord-detect ()
-    "Detect double-tap of multibyte characters and run the bound command."
-    (let* ((char last-command-event)
-           (now (float-time))
-           (cmd (alist-get char my/multibyte-chords)))
-      (if (and cmd
-               my/multibyte-chord--last-char
-               (eq char my/multibyte-chord--last-char)
-               my/multibyte-chord--last-time
-               (< (- now my/multibyte-chord--last-time) key-chord-one-key-delay))
-          (progn
-            (delete-char -1)
-            (delete-char -1)
-            (setq my/multibyte-chord--last-char nil
-                  my/multibyte-chord--last-time nil)
-            (call-interactively cmd))
-        (setq my/multibyte-chord--last-char char
-              my/multibyte-chord--last-time now))))
-
-  (add-hook 'post-self-insert-hook #'my/multibyte-chord-detect))
 
 ;;; Common keybindings
 
