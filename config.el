@@ -730,6 +730,7 @@ ARG is passed to `agent-shell-yank-dwim'."
 (my/apply-platform-keybindings)
 
 (load! "agent-view")
+(load! "toolbar")
 
 ;;; Civet
 
