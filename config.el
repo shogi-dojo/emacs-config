@@ -141,7 +141,7 @@ A font installed while Emacs runs may show up only as \"Inter Variable\".")
 
 ;; Sublime-like tabs: taller, padded, a UI font, a file-type icon, the
 ;; selected tab in the editor background and the rest in the bar colour.
-(defvar my/tab-bar-font-height 1.1
+(defvar my/tab-bar-font-height 1.05
   "Height of tab labels and icons relative to the editor font.
 Larger than other UI text: the tab bar has room, and tabs are targets.")
 
@@ -175,7 +175,13 @@ a display-space first character would make it loop forever in redisplay."
   (concat "   "
           (if (require 'nerd-icons nil t)
               ;; A display space is safe here, away from the first character.
-              (concat (or (ignore-errors (my/tab-bar-tab-icon tab)) "")
+              (concat (or (ignore-errors
+                            (let ((icon (my/tab-bar-tab-icon tab)))
+                              ;; Glyph icons run large next to text.
+                              (add-face-text-property 0 (length icon)
+                                                      '(:height 0.9) nil icon)
+                              icon))
+                          "")
                       (my/tab-bar--pad 10))
             "")
           name))
@@ -199,7 +205,7 @@ a display-space first character would make it loop forever in redisplay."
 ;; Each button is one character, so auto-width finds the close button at
 ;; the tab's end, and image margins give the padding around it.  Tab-bar
 ;; reloads its buttons whenever the mode turns on, so replace them then.
-(defvar my/tab-bar-button-size 18
+(defvar my/tab-bar-button-size 17
   "Pixel size of the tab bar's close and new-tab icons.")
 
 (defun my/tab-bar--icon (kind color margin)
