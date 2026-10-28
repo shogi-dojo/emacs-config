@@ -58,18 +58,34 @@ The header's model and mode text is violet too, and vanished under it."
       (face-remap-add-relative face :background background :foreground 'unspecified
                                :box nil :inverse-video nil))))
 
-(defface my/agent-fold-chevron
-  '((t :inherit shadow :family "Symbols Nerd Font Mono" :height 1.0))
-  "The chat's fold arrows, small and dim like treemacs' chevrons.")
+;; Treemacs' octicon chevrons for folds and the copy icon on code blocks,
+;; dim and in the nerd font, and code blocks that name no language (a tool
+;; call's `console' command and output) highlighted by their shape.
+(with-eval-after-load 'agent-shell
+  (setopt agent-shell-ui-fold-indicators '("\uf460" . "\uf47c")
+          agent-shell-markdown-source-block-copy-glyph "\uf4bb"
+          agent-shell-markdown-language-guess-function
+          #'agent-shell-markdown-guess-language)
+  (set-face-attribute 'agent-shell-ui-fold-indicator nil
+                      :inherit 'shadow :family "Symbols Nerd Font Mono"))
 
-(defun my/agent-fold-chevrons ()
-  "Draw agent-shell's ▶/▼ fold arrows as treemacs' octicon chevrons.
-agent-shell inserts and later searches for the literal triangles, so only
-their display changes, through the buffer's display table."
-  (let ((table (or buffer-display-table (make-display-table))))
-    (pcase-dolist (`(,arrow . ,chevron) '((?▶ . #xF460) (?▼ . #xF47C)))
-      (aset table arrow (vector (make-glyph-code chevron 'my/agent-fold-chevron))))
-    (setq buffer-display-table table)))
+;;; Code blocks
+
+(defun my/agent-code-panels ()
+  "Set code blocks off from the chat as panels in the theme's main background.
+The chat sits on solaire's darker background, which the default panel
+colour barely differs from.  The language label is small, dim and upright."
+  (face-remap-add-relative 'agent-shell-markdown-source-block
+                           :background (doom-color 'bg))
+  (face-remap-add-relative 'agent-shell-markdown-source-block-language
+                           :inherit 'shadow :slant 'normal :height 0.85
+                           :background (doom-color 'bg))
+  ;; Table stripes borrow `lazy-highlight', Dracula's loud violet; use the
+  ;; panel colour instead, so stripes are a quiet lift like the code blocks.
+  (face-remap-add-relative 'agent-shell-markdown-table-zebra
+                           :inherit 'agent-shell-markdown-table
+                           :background (doom-color 'bg)
+                           :foreground 'unspecified))
 
 (defun my/agent-prompt-cursor ()
   "Show the chat's cursor only in the prompt, where typing goes.
@@ -79,7 +95,7 @@ In the history above, clicks and drags still move point and select text."
 (defun my/agent-shell-prose ()
   "Give a chat buffer proportional prose; code and tables stay fixed-pitch."
   (my/agent-header-hover)
-  (my/agent-fold-chevrons)
+  (my/agent-code-panels)
   (add-hook 'post-command-hook #'my/agent-prompt-cursor nil t)
   (mixed-pitch-mode 1)
   (face-remap-add-relative 'variable-pitch

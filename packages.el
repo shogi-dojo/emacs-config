@@ -60,8 +60,12 @@
   :recipe (:host github :repo "xenodium/shell-maker"))
 (package! acp
   :recipe (:host github :repo "xenodium/acp.el"))
+;; Our fork, for options not yet upstream (fold and copy glyphs, guessing the
+;; language of console blocks): shogi-dojo/agent-shell#1.  Back to "main"
+;; once that merges.
 (package! agent-shell
-  :recipe (:host github :repo "xenodium/agent-shell"))
+  :recipe (:host github :repo "shogi-dojo/agent-shell"
+           :branch "feat/configurable-glyphs-code-guess"))
 ;; Local checkout; run `doom sync' after pulling changes into it.  Only
 ;; declared where the checkout exists, so other platforms still sync.
 (when (file-directory-p "~/projects/emacs/agent-desk")
