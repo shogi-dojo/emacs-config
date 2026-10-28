@@ -71,10 +71,16 @@ their display changes, through the buffer's display table."
       (aset table arrow (vector (make-glyph-code chevron 'my/agent-fold-chevron))))
     (setq buffer-display-table table)))
 
+(defun my/agent-prompt-cursor ()
+  "Show the chat's cursor only in the prompt, where typing goes.
+In the history above, clicks and drags still move point and select text."
+  (setq cursor-type (and (comint-after-pmark-p) (default-value 'cursor-type))))
+
 (defun my/agent-shell-prose ()
   "Give a chat buffer proportional prose; code and tables stay fixed-pitch."
   (my/agent-header-hover)
   (my/agent-fold-chevrons)
+  (add-hook 'post-command-hook #'my/agent-prompt-cursor nil t)
   (mixed-pitch-mode 1)
   (face-remap-add-relative 'variable-pitch
                            :family (my/agent-prose-family)
