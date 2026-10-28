@@ -730,7 +730,14 @@ ARG is passed to `agent-shell-yank-dwim'."
 (my/apply-platform-keybindings)
 
 (load! "agent-view")
-(load! "toolbar")
+
+;; Flat Lucide SVG icons in the tool bar (macOS keeps it on), a little
+;; dimmer than the text.
+(use-package! lucide-toolbar
+  :if (locate-library "lucide-toolbar")
+  :config
+  (setq lucide-toolbar-color (lambda () (doom-color 'base7)))
+  (lucide-toolbar-mode 1))
 
 ;;; Civet
 

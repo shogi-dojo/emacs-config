@@ -71,6 +71,10 @@
 (when (file-directory-p "~/projects/emacs/agent-desk")
   (package! agent-desk
     :recipe (:local-repo "~/projects/emacs/agent-desk" :files ("*.el"))))
+(when (file-directory-p "~/projects/emacs/lucide-toolbar")
+  (package! lucide-toolbar
+    :recipe (:local-repo "~/projects/emacs/lucide-toolbar"
+             :files (:defaults "icons"))))
 (package! nov)
 (package! substitute)
 ;; Linux only
