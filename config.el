@@ -617,6 +617,9 @@ ARG is passed to `agent-shell-yank-dwim'."
     (add-to-list 'agent-desk-accounts
                  '(:id antigravity :provider antigravity :label "Antigravity")
                  t))
+  ;; A graphical Emacs opens on the Agents tab.
+  (add-hook 'window-setup-hook
+            (lambda () (when (display-graphic-p) (agent-desk))))
   :config
   (agent-desk-register)
   ;; Chats live only in the Agents tab and code everywhere else; buffer
