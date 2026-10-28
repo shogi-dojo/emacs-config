@@ -14,6 +14,7 @@
 (declare-function map-elt "map")
 (declare-function map-nested-elt "map")
 (declare-function agent-shell-subscribe-to "agent-shell")
+(declare-function agent-shell--context-usage-indicator "agent-shell-usage")
 (declare-function agent-desk-store-get-thread "agent-desk-store")
 (declare-function agent-desk-account-by-id "agent-desk-accounts")
 (declare-function agent-desk-icon-letter "agent-desk-icons")
@@ -181,11 +182,8 @@ It starts in the chat's directory and is reused for that project."
 Each report is the agent's `_claude/rateLimit' metadata: utilization,
 resetsAt, rateLimitType and status.")
 
-(defvar-local my/agent-context-percent nil
-  "How full the chat's context window is, in percent, or nil until reported.")
-
 (defun my/agent-usage-subscribe ()
-  "Follow the agent's usage reports for the chat in the current buffer."
+  "Follow the agent's rate limit reports for the chat in the current buffer."
   (when (fboundp 'agent-shell-subscribe-to)
     (let ((buffer (current-buffer)))
       (agent-shell-subscribe-to
@@ -194,22 +192,24 @@ resetsAt, rateLimitType and status.")
        :on-event
        (lambda (event)
          (when (buffer-live-p buffer)
-           (let* ((usage (map-nested-elt event '(:data :usage)))
-                  (used (map-elt usage :context-used))
-                  (size (map-elt usage :context-size))
-                  (limit (map-nested-elt event '(:data :meta _claude/rateLimit))))
+           (let ((limit (map-nested-elt event '(:data :meta _claude/rateLimit))))
              (with-current-buffer buffer
-               (when (and (numberp used) (numberp size) (> size 0))
-                 (setq my/agent-context-percent (round (* 100.0 (/ used size)))))
                (when-let ((account (my/agent-chat-account)))
                  (when limit
                    (my/agent-usage-record (format "%s" (plist-get account :id))
                                           limit)))))))))))
 
 (defun my/agent-usage-record (account-id limit)
-  "Keep LIMIT as ACCOUNT-ID's latest report for its rate limit type."
+  "Keep LIMIT as ACCOUNT-ID's latest report for its rate limit type.
+A report also carries every window in `unifiedWindows' (the 5-hour one
+arrives inside a 7-day report); each is kept under its own type."
   (let* ((type (format "%s" (or (map-elt limit 'rateLimitType) "five_hour")))
          (reports (gethash account-id my/agent-usage)))
+    (dolist (window (ignore-errors (map-elt limit 'unifiedWindows)))
+      (let ((name (format "%s" (car window))))
+        (unless (equal name type)
+          (setf (alist-get name reports nil nil #'equal)
+                (cons (cons 'rateLimitType name) (cdr window))))))
     (setf (alist-get type reports nil nil #'equal) limit)
     (puthash account-id reports my/agent-usage)))
 
@@ -282,9 +282,11 @@ resetsAt, rateLimitType and status.")
                             'face `(:background ,(agent-desk-icon-color account)
                                     :foreground "#ffffff" :weight bold))
                 (when model (format "  %s" model))
-                (when my/agent-context-percent
-                  (format "  ctx %d%%" my/agent-context-percent))
-                (when limit (concat "  " limit))))))
+                ;; agent-shell's own "23k/1m (2%)", escaped for the modeline.
+                (when-let ((context (ignore-errors (agent-shell--context-usage-indicator))))
+                  (concat "  " context))
+                ;; The modeline reads % as a format code: double it.
+                (when limit (concat "  " (string-replace "%" "%%" limit)))))))
   (doom-modeline-def-modeline 'agent-chat
     '(bar window-number modals buffer-info)
     '(agent-chat misc-info major-mode process)))
