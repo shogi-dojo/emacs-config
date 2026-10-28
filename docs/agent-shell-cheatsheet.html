@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Agent chat cheat sheet</title>
+<style>
+  :root { --ink: #1f2330; --muted: #5b6275; --accent: #7c3aed; --code: #eef0f7; --rule: #d9dce6; }
+  * { box-sizing: border-box; }
+  body { font: 13px/1.5 "SF Pro Text", "Helvetica Neue", Arial, sans-serif; color: var(--ink);
+         margin: 28px 34px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .lead { color: var(--muted); margin: 0 0 16px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 22px; }
+  section { border: 1px solid var(--rule); border-radius: 8px; padding: 10px 14px; break-inside: avoid; }
+  h2 { font-size: 14px; color: var(--accent); margin: 0 0 6px; }
+  table { width: 100%; border-collapse: collapse; }
+  td { padding: 3px 0; vertical-align: top; }
+  td.keys { width: 42%; padding-right: 8px; }
+  kbd { font: 12px "JetBrainsMono Nerd Font", Menlo, monospace; background: var(--code);
+        border: 1px solid var(--rule); border-bottom-width: 2px; border-radius: 4px; padding: 0 4px; }
+  .tip { margin: 8px 0 0; padding: 6px 8px; background: #f5f0ff; border-radius: 6px; color: var(--muted); }
+  .tip b { color: var(--accent); }
+  footer { margin-top: 14px; color: var(--muted); font-size: 11px; }
+</style>
+</head>
+<body>
+<h1>Agent chat cheat sheet</h1>
+<p class="lead">Keys for the chat, the compose buffer, the desk sidebar and the details panel. Keys shown are the ones configured in this Emacs setup.</p>
+
+<div class="grid">
+
+<section>
+  <h2>Sending</h2>
+  <table>
+    <tr><td class="keys"><kbd>RET</kbd></td><td>Steer: during a turn it changes course, when idle it sends.</td></tr>
+    <tr><td class="keys"><kbd>M-RET</kbd></td><td>Queue: sends after the running turn ends.</td></tr>
+    <tr><td class="keys"><kbd>C-c C-c</kbd></td><td>Send from the compose buffer (viewport).</td></tr>
+    <tr><td class="keys"><kbd>C-c C-k</kbd></td><td>Cancel the compose buffer.</td></tr>
+    <tr><td class="keys"><kbd>C-c C-p</kbd></td><td>Peek at the last prompt sent.</td></tr>
+  </table>
+  <p class="tip"><b>When to use it:</b> steer to correct the agent mid-task; queue when the next instruction depends on the current turn finishing.</p>
+</section>
+
+<section>
+  <h2>Model, mode and effort</h2>
+  <table>
+    <tr><td class="keys"><kbd>C-c C-v</kbd></td><td>Pick the model.</td></tr>
+    <tr><td class="keys"><kbd>C-c C-m</kbd></td><td>Pick the session mode (plan, auto, manual).</td></tr>
+    <tr><td class="keys"><kbd>C-c C-t</kbd></td><td>Pick the thought level (effort).</td></tr>
+    <tr><td class="keys"><kbd>C-&lt;tab&gt;</kbd></td><td>Cycle the session mode.</td></tr>
+  </table>
+  <p class="tip"><b>When to use it:</b> switch to plan mode before a risky change; drop effort for quick questions.</p>
+</section>
+
+<section>
+  <h2>History and interrupting</h2>
+  <table>
+    <tr><td class="keys"><kbd>M-p</kbd> / <kbd>M-n</kbd></td><td>Previous or next prompt in the compose buffer.</td></tr>
+    <tr><td class="keys"><kbd>M-r</kbd></td><td>Search prompt history.</td></tr>
+    <tr><td class="keys"><kbd>C-c C-c</kbd></td><td>Interrupt the running turn (viewport).</td></tr>
+    <tr><td class="keys"><kbd>C-c C-o</kbd></td><td>Jump to the other chat buffer.</td></tr>
+  </table>
+  <p class="tip"><b>When to use it:</b> search history to reuse an earlier prompt instead of retyping it.</p>
+</section>
+
+<section>
+  <h2>Help</h2>
+  <table>
+    <tr><td class="keys"><kbd>C-c C-h</kbd></td><td>The compose buffer's help menu.</td></tr>
+  </table>
+  <p class="tip"><b>When to use it:</b> when a key is forgotten, the help menu lists the compose commands in one place.</p>
+</section>
+
+<section>
+  <h2>Desk sidebar</h2>
+  <table>
+    <tr><td class="keys"><kbd>RET</kbd></td><td>Open the chat at point.</td></tr>
+    <tr><td class="keys"><kbd>n</kbd> / <kbd>N</kbd></td><td>New chat in this project / in a chosen project.</td></tr>
+    <tr><td class="keys"><kbd>R</kbd></td><td>Rename the chat.</td></tr>
+    <tr><td class="keys"><kbd>p</kbd> / <kbd>a</kbd></td><td>Pin or unpin; archive.</td></tr>
+    <tr><td class="keys"><kbd>c</kbd></td><td>Continue the chat with another account.</td></tr>
+    <tr><td class="keys"><kbd>i</kbd></td><td>Show the details panel for the chat.</td></tr>
+    <tr><td class="keys"><kbd>d</kbd></td><td>Delete the chat, after asking.</td></tr>
+  </table>
+  <p class="tip"><b>When to use it:</b> pin the chats you return to; archive finished ones so the list stays short.</p>
+</section>
+
+<section>
+  <h2>Details panel</h2>
+  <table>
+    <tr><td class="keys"><kbd>TAB</kbd></td><td>Open or close the section at point.</td></tr>
+    <tr><td class="keys"><kbd>g</kbd> / <kbd>r</kbd></td><td>Refresh the details.</td></tr>
+    <tr><td class="keys"><kbd>o</kbd></td><td>Open the pull request in the browser.</td></tr>
+    <tr><td class="keys"><kbd>D</kbd></td><td>Show every diff of the chat.</td></tr>
+  </table>
+  <p class="tip"><b>When to use it:</b> check the diffs and the open pull request before asking for a commit.</p>
+</section>
+
+<section>
+  <h2>Terminal and phone</h2>
+  <table>
+    <tr><td class="keys"><kbd>s-`</kbd> (macOS)<br><kbd>C-c `</kbd> in a chat</td><td>Open or close the project terminal under the chat. It starts in the chat's folder and is reused for that project.</td></tr>
+    <tr><td class="keys">M-x my/agent-cheatsheet</td><td>Open this cheat sheet.</td></tr>
+    <tr><td class="keys">M-x agent-desk-remote-pair</td><td>Show a pairing code for the Desk Remote phone app.</td></tr>
+  </table>
+  <p class="tip"><b>When to use it:</b> run a quick command in the project without leaving the chat; pair a new phone when the list stops updating.</p>
+</section>
+
+</div>
+
+<footer>Generated from docs/agent-shell-cheatsheet.html in the Doom config.</footer>
+</body>
+</html>

@@ -58,6 +58,47 @@
 (setq doom-theme 'doom-dracula
       doom-font (font-spec :family my/font-family :size my/font-size))
 
+;; Every frame opens maximized: the Agents layout needs the whole screen.
+(add-to-list 'default-frame-alist '(fullscreen . maximized))
+
+;; Two fonts: the editor font for code, and one UI sans for everything people
+;; read as text (chat prose, the agent-desk panels, tab labels), all at
+;; `my/ui-font-height'.  `my/toggle-font-scheme' switches to the earlier
+;; `mixed' set (Helvetica Neue in panels and tabs, Inter in chats) to compare.
+(defvar my/font-scheme 'unified
+  "Fonts for UI text: `unified' (one sans, one size) or `mixed' (the earlier set).")
+
+(defconst my/ui-font-candidates '("Inter" "Inter Variable" "SF Pro Text" "Helvetica Neue")
+  "UI sans fonts tried in order.  Inter: brew install --cask font-inter.
+A font installed while Emacs runs may show up only as \"Inter Variable\".")
+
+(defconst my/mixed-ui-font-candidates
+  '("SF Pro Text" "SF Pro" "Helvetica Neue" "Inter" "Cantarell" "Noto Sans")
+  "The `mixed' scheme's fonts for panels and tabs (Helvetica Neue here).")
+
+(defvar my/ui-font-height 0.9
+  "Height of UI text relative to the editor font, in the `unified' scheme.")
+
+(defun my/first-font (families)
+  "The first installed font of FAMILIES, or nil."
+  (and (display-graphic-p)
+       (seq-find (lambda (f) (find-font (font-spec :family f))) families)))
+
+(defun my/ui-font (&optional chrome)
+  "The UI sans for prose, or with CHROME for panels and tabs."
+  (my/first-font (if (and chrome (eq my/font-scheme 'mixed))
+                     my/mixed-ui-font-candidates
+                   my/ui-font-candidates)))
+
+(defun my/ui-chrome-height (mixed)
+  "Height of panel and tab text: MIXED in the `mixed' scheme."
+  (if (eq my/font-scheme 'mixed) mixed my/ui-font-height))
+
+;; mixed-pitch copies this face.  Unset, it is "Sans Serif", which macOS
+;; draws in narrow Tahoma.
+(when-let* ((family (my/ui-font)))
+  (setq doom-variable-pitch-font (font-spec :family family)))
+
 (add-hook 'after-setting-font-hook
           (lambda ()
             (let ((cjk-font (font-spec :family my/cjk-font-family))
@@ -100,9 +141,9 @@
 
 ;; Sublime-like tabs: taller, padded, a UI font, a file-type icon, the
 ;; selected tab in the editor background and the rest in the bar colour.
-(defvar my/tab-bar-font-families
-  '("SF Pro Text" "SF Pro" "Helvetica Neue" "Inter" "Cantarell" "Noto Sans")
-  "UI fonts tried in order for tab labels; the editor font is the fallback.")
+(defvar my/tab-bar-font-height 1.05
+  "Height of tab labels and icons relative to the editor font.
+Larger than other UI text: the tab bar has room, and tabs are targets.")
 
 (defvar my/tab-bar-named-icons
   '(("Agents" . (nerd-icons-mdicon "nf-md-robot_outline")))
@@ -134,7 +175,13 @@ a display-space first character would make it loop forever in redisplay."
   (concat "   "
           (if (require 'nerd-icons nil t)
               ;; A display space is safe here, away from the first character.
-              (concat (or (ignore-errors (my/tab-bar-tab-icon tab)) "")
+              (concat (or (ignore-errors
+                            (let ((icon (my/tab-bar-tab-icon tab)))
+                              ;; Glyph icons run large next to text.
+                              (add-face-text-property 0 (length icon)
+                                                      '(:height 0.9) nil icon)
+                              icon))
+                          "")
                       (my/tab-bar--pad 10))
             "")
           name))
@@ -158,7 +205,7 @@ a display-space first character would make it loop forever in redisplay."
 ;; Each button is one character, so auto-width finds the close button at
 ;; the tab's end, and image margins give the padding around it.  Tab-bar
 ;; reloads its buttons whenever the mode turns on, so replace them then.
-(defvar my/tab-bar-button-size 16
+(defvar my/tab-bar-button-size 17
   "Pixel size of the tab bar's close and new-tab icons.")
 
 (defun my/tab-bar--icon (kind color margin)
@@ -194,11 +241,10 @@ MARGIN is the horizontal space in pixels on each side."
   "Restyle the tab bar from the current theme's palette."
   (let ((bar (doom-color 'bg-alt))
         (active (doom-color 'bg))
-        (family (seq-find (lambda (f) (find-font (font-spec :family f)))
-                          my/tab-bar-font-families))
+        (family (my/ui-font t))
         (vertical '(1 . 8)))
     (set-face-attribute 'tab-bar nil
-                        :family (or family 'unspecified) :height 1.0
+                        :family (or family 'unspecified) :height my/tab-bar-font-height
                         :background bar :foreground (doom-color 'base5)
                         :box `(:line-width (1 . 2) :color ,bar))
     (set-face-attribute 'tab-bar-tab nil
@@ -246,13 +292,22 @@ MARGIN is the horizontal space in pixels on each side."
       devil-prompt (concat my/devil-emoji " %t"))
 (global-devil-mode)
 
-(when (eq my/platform 'macos)
-  (define-key devil-mode-map (kbd "б") #'devil)
-  (add-to-list 'devil-special-keys `("б б" . ,(devil-key-executor "б")))
-  (setq devil-translations '(("б" . "C-")
-                             (", ," . ",")
-                             ("б б" . "б")
-                             ("," . "C-"))))
+;;; Ukrainian layout
+
+;; With the macOS Ukrainian layout on, reverse-im maps every key pressed with
+;; Ctrl, Option (Meta) or Cmd (Super) to its Latin twin, so C-ч runs C-x and
+;; s-м pastes.  Plain keys stay text: devil's comma and the key chords sit on
+;; Ukrainian letters (б, л, ц), so they work on the English layout only.
+(use-package! reverse-im
+  :when (eq my/platform 'macos)
+  :demand t
+  :init
+  (setq reverse-im-input-methods '("ukrainian-computer")
+        reverse-im-cache-file (concat doom-cache-dir "reverse-im-cache.el")
+        ;; Dispatchers that read single keys with `read-char'.
+        reverse-im-read-char-advice-function #'reverse-im-read-char-include)
+  :config
+  (reverse-im-mode t))
 
 ;;; Find file across Treemacs projects
 
@@ -311,37 +366,6 @@ Falls back to `projectile-find-file' when the workspace has no projects."
 (key-chord-define-global "ww" 'switch-to-buffer)
 (key-chord-define-global "JJ" 'crux-switch-to-previous-buffer)
 (key-chord-define-global ";;" 'repeat)
-
-(when (eq my/platform 'macos)
-  (defvar my/multibyte-chords
-    '((?ц . switch-to-buffer)
-      (?л . my/find-file-in-treemacs-projects)
-      (?ч . execute-extended-command))
-    "Alist of (CHAR . COMMAND) for double-tap multibyte key chords.")
-
-  (defvar my/multibyte-chord--last-char nil)
-  (defvar my/multibyte-chord--last-time nil)
-
-  (defun my/multibyte-chord-detect ()
-    "Detect double-tap of multibyte characters and run the bound command."
-    (let* ((char last-command-event)
-           (now (float-time))
-           (cmd (alist-get char my/multibyte-chords)))
-      (if (and cmd
-               my/multibyte-chord--last-char
-               (eq char my/multibyte-chord--last-char)
-               my/multibyte-chord--last-time
-               (< (- now my/multibyte-chord--last-time) key-chord-one-key-delay))
-          (progn
-            (delete-char -1)
-            (delete-char -1)
-            (setq my/multibyte-chord--last-char nil
-                  my/multibyte-chord--last-time nil)
-            (call-interactively cmd))
-        (setq my/multibyte-chord--last-char char
-              my/multibyte-chord--last-time now))))
-
-  (add-hook 'post-self-insert-hook #'my/multibyte-chord-detect))
 
 ;;; Common keybindings
 
@@ -606,6 +630,9 @@ ARG is passed to `agent-shell-yank-dwim'."
     (add-to-list 'agent-desk-accounts
                  '(:id antigravity :provider antigravity :label "Antigravity")
                  t))
+  ;; A graphical Emacs opens on the Agents tab.
+  (add-hook 'window-setup-hook
+            (lambda () (when (display-graphic-p) (agent-desk))))
   :config
   (agent-desk-register)
   ;; Chats live only in the Agents tab and code everywhere else; buffer
@@ -631,7 +658,8 @@ ARG is passed to `agent-shell-yank-dwim'."
   '(("x" . clipboard-kill-region)
     ("c" . clipboard-kill-ring-save)
     ("v" . clipboard-yank)
-    ("j" . crux-top-join-line)
+    ("j" . my/agent-toggle-terminal)
+    ("J" . crux-top-join-line)
     ("k" . crux-kill-whole-line)
     ("w" . kill-current-buffer)
     ("t" . treemacs)
@@ -690,6 +718,16 @@ ARG is passed to `agent-shell-yank-dwim'."
 (load! (format "platforms/keybindings-%s" my/platform))
 (my/apply-platform-keybindings)
 
+(load! "agent-view")
+
+;; Flat Lucide SVG icons in the tool bar (macOS keeps it on), a little
+;; dimmer than the text.
+(use-package! lucide-toolbar
+  :if (locate-library "lucide-toolbar")
+  :config
+  (setq lucide-toolbar-color (lambda () (doom-color 'base7)))
+  (lucide-toolbar-mode 1))
+
 ;;; Civet
 
 (use-package! civet-mode
@@ -707,4 +745,6 @@ ARG is passed to `agent-shell-yank-dwim'."
   (add-to-list 'load-path "/Users/mac/Documents/sublime.el")
   (when (require 'sublime nil t)
     (setq sublime-apply-font-size nil)
-    (sublime-mode 1)))
+    (sublime-mode 1)
+    ;; Cmd+J toggles the terminal popup; join line moves to Cmd+Shift+J.
+    (define-key sublime-mode-map (kbd "s-j") #'my/agent-toggle-terminal)))

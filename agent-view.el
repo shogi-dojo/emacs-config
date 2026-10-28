@@ -1,0 +1,447 @@
+;;; agent-view.el -*- lexical-binding: t; -*-
+
+;; Declared here: these come from agent-shell and agent-desk, loaded by their
+;; own packages.
+(defvar agent-shell-mode-map)
+(defvar agent-shell-busy-submit-default-function)
+(defvar agent-shell-busy-submit-override-function)
+(defvar agent-shell-chat-label-function)
+(defvar agent-shell-header-font-family)
+(defvar agent-desk--thread-id)
+(declare-function agent-shell-config-options "agent-shell")
+(declare-function agent-shell--update-header-and-mode-line "agent-shell")
+(declare-function agent-shell-busy-submit-steer "agent-shell-prompt-queue")
+(declare-function agent-shell-busy-submit-queue "agent-shell-prompt-queue")
+(declare-function mixed-pitch-mode "mixed-pitch")
+(declare-function map-elt "map")
+(declare-function map-nested-elt "map")
+(declare-function agent-shell-subscribe-to "agent-shell")
+(declare-function agent-shell--context-usage-indicator "agent-shell-usage")
+(declare-function agent-desk-store-get-thread "agent-desk-store")
+(declare-function agent-desk-account-by-id "agent-desk-accounts")
+(declare-function agent-desk-icon-letter "agent-desk-icons")
+(declare-function agent-desk-icon-color "agent-desk-icons")
+
+;;; Chat look
+
+(defconst my/agent-fixed-pitch-faces
+  '(agent-shell-markdown-inline-code
+    agent-shell-markdown-source-block
+    agent-shell-markdown-source-block-language
+    agent-shell-markdown-table
+    agent-shell-markdown-table-border
+    agent-shell-markdown-table-header
+    agent-shell-markdown-table-zebra)
+  "Chat faces that stay fixed-pitch: code, tables and their borders.")
+
+;; The panels take their font from agent-desk's own options, set here from
+;; the scheme in config.el (`my/font-scheme').
+(defun my/agent-panel-fonts ()
+  "Set agent-desk's panel font options from `my/font-scheme'."
+  (setq agent-desk-sidebar-font-families
+        (if (eq my/font-scheme 'mixed) my/mixed-ui-font-candidates my/ui-font-candidates)
+        agent-desk-sidebar-font-height (my/ui-chrome-height 0.95)))
+
+(with-eval-after-load 'agent-desk-sidebar (my/agent-panel-fonts))
+
+(defun my/agent-panel-refont (buffer refresh)
+  "Give panel BUFFER the current panel font, then call REFRESH to relayout."
+  (when (buffer-live-p buffer)
+    (with-current-buffer buffer
+      ;; Drop the panel's earlier font remap before adding the new one.
+      (setf (alist-get 'default face-remapping-alist)
+            (seq-remove (lambda (spec) (and (consp spec) (plist-member spec :family)))
+                        (alist-get 'default face-remapping-alist)))
+      (agent-desk-ui-setup-panel agent-desk-sidebar-font-families
+                                 agent-desk-sidebar-font-height
+                                 agent-desk-sidebar-line-spacing))
+    (funcall refresh)))
+
+;; These chat faces are words, not code, but inherit font-lock faces that
+;; mixed-pitch keeps fixed-pitch: fold summaries, labels, headings, quotes.
+(defconst my/agent-ui-text-faces
+  '(agent-shell-secondary agent-shell-pending agent-shell-input
+    agent-shell-section-heading agent-shell-section-annotation
+    agent-shell-diff-changes-label agent-shell-markdown-blockquote
+    agent-shell-model agent-shell-thought-level agent-shell-buffer-name
+    agent-shell-session-id agent-shell-session-mode agent-shell-session-title
+    agent-shell-session-directory agent-shell-session-date
+    agent-shell-list-name agent-shell-list-value agent-shell-viewport-prompt
+    agent-shell-container-indicator header-line)
+  "Chat faces drawn in the UI sans in the `unified' font scheme.")
+
+(defvar-local my/agent-ui-text-cookies nil
+  "Face remap cookies `my/agent-chat-fonts' added in this buffer.")
+
+(defun my/agent-label-family ()
+  "Face attributes giving chat labels the UI sans in the `unified' scheme."
+  (when-let* (((eq my/font-scheme 'unified))
+              (family (my/ui-font)))
+    (list :family family)))
+
+(defun my/agent-chat-fonts ()
+  "Draw the chat's word faces in the UI sans when the scheme is `unified'.
+The header is an SVG image and takes `agent-shell-header-font-family'."
+  (setq-local agent-shell-header-font-family
+              (and (eq my/font-scheme 'unified) (my/ui-font)))
+  (mapc #'face-remap-remove-relative my/agent-ui-text-cookies)
+  (setq my/agent-ui-text-cookies
+        (when-let* (((eq my/font-scheme 'unified))
+                    (family (my/ui-font)))
+          (mapcar (lambda (face) (face-remap-add-relative face :family family))
+                  my/agent-ui-text-faces))))
+
+(defun my/toggle-font-scheme ()
+  "Switch UI text between the `unified' and `mixed' font schemes, live."
+  (interactive)
+  (setq my/font-scheme (if (eq my/font-scheme 'mixed) 'unified 'mixed))
+  (my/tab-bar-apply-faces)
+  (when (featurep 'agent-desk-sidebar)
+    (my/agent-panel-fonts)
+    (my/agent-panel-refont (get-buffer agent-desk-sidebar-buffer-name)
+                           #'agent-desk-sidebar-refresh)
+    (when (featurep 'agent-desk-details)
+      (my/agent-panel-refont (get-buffer agent-desk-details-buffer-name)
+                             #'agent-desk-details-refresh)))
+  (dolist (buffer (buffer-list))
+    (with-current-buffer buffer
+      (when (derived-mode-p 'agent-shell-mode)
+        (my/agent-chat-fonts)
+        (agent-shell--update-header-and-mode-line))))
+  (message "Font scheme: %s" my/font-scheme))
+
+(defun my/agent-header-hover ()
+  "Make hovering the chat header a subtle lift instead of the theme's violet.
+The header's model and mode text is violet too, and vanished under it."
+  (let ((background (or (face-background 'region nil t)
+                        (face-background 'hl-line nil t))))
+    (dolist (face '(mode-line-highlight header-line-highlight))
+      (face-remap-add-relative face :background background :foreground 'unspecified
+                               :box nil :inverse-video nil))))
+
+;; Treemacs' octicon chevrons for folds and the copy icon on code blocks,
+;; dim and in the nerd font, and code blocks that name no language (a tool
+;; call's `console' command and output) highlighted by their shape.
+(with-eval-after-load 'agent-shell
+  (setopt agent-shell-ui-fold-indicators '("\uf460" . "\uf47c")
+          agent-shell-markdown-source-block-copy-glyph "\uf4bb"
+          agent-shell-markdown-language-guess-function
+          #'agent-shell-markdown-guess-language)
+  (set-face-attribute 'agent-shell-ui-fold-indicator nil
+                      :inherit 'shadow :family "Symbols Nerd Font Mono"))
+
+;;; Code blocks
+
+(defun my/agent-code-panels ()
+  "Set code blocks off from the chat as panels in the theme's main background.
+The chat sits on solaire's darker background, which the default panel
+colour barely differs from.  The language label is small, dim and upright."
+  (face-remap-add-relative 'agent-shell-markdown-source-block
+                           :background (doom-color 'bg))
+  (face-remap-add-relative 'agent-shell-markdown-source-block-language
+                           :inherit 'shadow :slant 'normal :height 0.85
+                           :background (doom-color 'bg))
+  ;; Table stripes borrow `lazy-highlight', Dracula's loud violet; use the
+  ;; panel colour instead, so stripes are a quiet lift like the code blocks.
+  (face-remap-add-relative 'agent-shell-markdown-table-zebra
+                           :inherit 'agent-shell-markdown-table
+                           :background (doom-color 'bg)
+                           :foreground 'unspecified))
+
+(defun my/agent-prompt-cursor ()
+  "Show the chat's cursor only in the prompt, where typing goes.
+In the history above, clicks and drags still move point and select text."
+  (setq cursor-type (and (comint-after-pmark-p) (default-value 'cursor-type))))
+
+(defun my/agent-shell-prose ()
+  "Give a chat buffer proportional prose; code and tables stay fixed-pitch."
+  (my/agent-header-hover)
+  (my/agent-code-panels)
+  (my/agent-chat-fonts)
+  ;; No scroll bar: Emacs sizes its thumb from a sample of line heights, and
+  ;; a chat's folds, wrapped prose and tables make it jump as you scroll.
+  (setq-local vertical-scroll-bar nil)
+  (add-hook 'post-command-hook #'my/agent-prompt-cursor nil t)
+  (mixed-pitch-mode 1)
+  (face-remap-add-relative 'variable-pitch
+                           :family (or (my/ui-font) "Helvetica Neue")
+                           :height my/ui-font-height))
+
+(defun my/agent-prose-after-solaire ()
+  "Put mixed-pitch's proportional font back in front of solaire's remap.
+Solaire turns on after the mode hooks; its face inherits `default', so as
+the newer remap it would bring the monospace font back over the prose.
+Attribute lists (mixed-pitch's) go first, face names (solaire's) after."
+  (when-let* (((derived-mode-p 'agent-shell-mode))
+              (specs (cdr (assq 'default face-remapping-alist))))
+    (setq-local face-remapping-alist
+                (cons (cons 'default (append (seq-filter #'consp specs)
+                                             (seq-remove #'consp specs)))
+                      (assq-delete-all 'default (copy-sequence face-remapping-alist))))))
+
+(add-hook 'solaire-mode-hook #'my/agent-prose-after-solaire)
+
+(use-package! mixed-pitch
+  :commands mixed-pitch-mode
+  :config
+  (dolist (face my/agent-fixed-pitch-faces)
+    (add-to-list 'mixed-pitch-fixed-pitch-faces face)))
+
+(with-eval-after-load 'agent-shell
+  (add-hook 'agent-shell-mode-hook #'my/agent-shell-prose)
+  ;; comint's menus carry nothing a chat needs.
+  (dolist (entry '(inout signals completion))
+    (define-key agent-shell-mode-map (vector 'menu-bar entry) 'undefined))
+  ;; RET steers a running turn; Option+RET queues it.
+  (setq agent-shell-busy-submit-default-function #'agent-shell-busy-submit-steer
+        agent-shell-busy-submit-override-function #'agent-shell-busy-submit-queue))
+
+;;; Chat labels
+
+(defvar-local my/agent-chat-account-cache nil
+  "A (THREAD-ID . ACCOUNT) pair: the account last looked up for this chat.")
+
+(defun my/agent-chat-account ()
+  "The account of the chat in the current buffer, or nil.
+It is looked up once per thread: the modeline asks on every redisplay."
+  (when (and (bound-and-true-p agent-desk--thread-id)
+             (fboundp 'agent-desk-store-get-thread))
+    (if (eql (car my/agent-chat-account-cache) agent-desk--thread-id)
+        (cdr my/agent-chat-account-cache)
+      (let ((account (when-let ((row (agent-desk-store-get-thread agent-desk--thread-id)))
+                       (agent-desk-account-by-id (plist-get row :account-id)))))
+        (setq my/agent-chat-account-cache (cons agent-desk--thread-id account))
+        account))))
+
+(defun my/agent-chat-label (label)
+  "Draw a chat LABEL: the user's name bold, the agent's in its account colour.
+The agent's badge is a letter in the account colour, as in the sidebar."
+  (let* ((user (eq (map-elt label :role) 'user))
+         (text (map-elt label :text))
+         (account (and (not user) (my/agent-chat-account)))
+         (color (and account (fboundp 'agent-desk-icon-color)
+                     (agent-desk-icon-color account))))
+    (if (and account color)
+        (concat (propertize (format " %s " (agent-desk-icon-letter account))
+                            'face `(:background ,color :foreground "#ffffff" :weight bold
+                                    ,@(my/agent-label-family)))
+                (propertize (format " %s" text)
+                            'face `(:foreground ,color :weight bold ,@(my/agent-label-family))))
+      (propertize (format " %s " text)
+                  'face `(:weight bold ,@(my/agent-label-family)
+                          :inherit ,(if user 'font-lock-keyword-face
+                                      'font-lock-function-name-face))))))
+
+(with-eval-after-load 'agent-shell-chat-mode
+  (setq agent-shell-chat-label-function #'my/agent-chat-label))
+
+;;; Keys for the chat
+
+;;; Terminal under the chat
+
+(defvar my/agent-terminal-height 0.3
+  "Height of the terminal under the chat, as a fraction of the chat window.")
+
+(require 'eshell nil t)
+
+(defun my/agent-terminal-buffer (directory)
+  "The terminal buffer for DIRECTORY, started there when it does not exist yet."
+  (let* ((dir (file-name-as-directory (expand-file-name directory)))
+         (name (format "*agent-terminal %s*" (abbreviate-file-name dir))))
+    (or (get-buffer name)
+        (let ((default-directory dir))
+          (if (fboundp 'vterm-mode)
+              (with-current-buffer (get-buffer-create name)
+                (vterm-mode)
+                (current-buffer))
+            (let ((eshell-buffer-name name))
+              (eshell t)))))))
+
+(defun my/agent-terminal-directory ()
+  "The folder for the terminal: the chat's project when it has one.
+A chat buffer's own `default-directory' is often ~, so ask agent-desk."
+  (or (when-let* ((thread (bound-and-true-p agent-desk--thread-id))
+                  ((fboundp 'agent-desk-store-get-thread))
+                  (row (agent-desk-store-get-thread thread))
+                  (cwd (plist-get row :cwd))
+                  ((file-directory-p cwd)))
+        cwd)
+      default-directory))
+
+(defun my/agent-chat-window ()
+  "The window to split for the terminal: the selected one, unless it is a
+dedicated side panel, which is never split; then the largest ordinary window."
+  (let ((window (selected-window)))
+    (if (window-dedicated-p window)
+        (or (get-largest-window nil nil t) window)
+      window)))
+
+(defun my/agent-toggle-terminal ()
+  "Open or close the project terminal under the chat window.
+It starts in the chat's directory and is reused for that project.  From
+inside a terminal it closes that one, wherever its shell has cd'd to."
+  (interactive)
+  (let* ((buffer (if (string-prefix-p "*agent-terminal " (buffer-name))
+                     (current-buffer)
+                   (my/agent-terminal-buffer (my/agent-terminal-directory))))
+         (shown (get-buffer-window buffer)))
+    (if shown
+        (delete-window shown)
+      (let* ((chat (my/agent-chat-window))
+             (below (split-window chat (round (* (- 1 my/agent-terminal-height)
+                                                 (window-total-height chat)))
+                                  'below)))
+        (set-window-buffer below buffer)
+        (select-window below)))))
+
+(global-set-key (kbd (my/platform-keybinding "`")) #'my/agent-toggle-terminal)
+(with-eval-after-load 'agent-shell
+  (define-key agent-shell-mode-map (kbd "C-c `") #'my/agent-toggle-terminal))
+
+;;; Cheat sheet
+
+(defvar my/agent-cheatsheet-pdf
+  (expand-file-name "docs/agent-shell-cheatsheet.pdf" doom-user-dir)
+  "The agent-shell cheat sheet as a PDF.")
+
+(defun my/agent-cheatsheet ()
+  "Open the agent-shell cheat sheet PDF."
+  (interactive)
+  (if (file-exists-p my/agent-cheatsheet-pdf)
+      (if (eq my/platform 'macos)
+          (start-process "cheatsheet" nil "open" my/agent-cheatsheet-pdf)
+        (browse-url-of-file my/agent-cheatsheet-pdf))
+    (user-error "No cheat sheet at %s" my/agent-cheatsheet-pdf)))
+
+;;; One modeline, with the chat's account and model
+
+(defvar my/agent-usage (make-hash-table :test 'equal)
+  "Per account id, an alist of rate limit type to the latest report of it.
+Each report is the agent's `_claude/rateLimit' metadata: utilization,
+resetsAt, rateLimitType and status.")
+
+(defun my/agent-usage-subscribe ()
+  "Follow the agent's rate limit reports for the chat in the current buffer."
+  (when (fboundp 'agent-shell-subscribe-to)
+    (let ((buffer (current-buffer)))
+      (agent-shell-subscribe-to
+       :shell-buffer buffer
+       :event 'usage-update
+       :on-event
+       (lambda (event)
+         (when (buffer-live-p buffer)
+           (let ((limit (map-nested-elt event '(:data :meta _claude/rateLimit))))
+             (with-current-buffer buffer
+               (when-let ((account (my/agent-chat-account)))
+                 (when limit
+                   (my/agent-usage-record (format "%s" (plist-get account :id))
+                                          limit)))))))))))
+
+(defun my/agent-usage-record (account-id limit)
+  "Keep LIMIT as ACCOUNT-ID's latest report for its rate limit type.
+A report also carries every window in `unifiedWindows' (the 5-hour one
+arrives inside a 7-day report); each is kept under its own type."
+  (let* ((type (format "%s" (or (map-elt limit 'rateLimitType) "five_hour")))
+         (reports (gethash account-id my/agent-usage)))
+    (dolist (window (ignore-errors (map-elt limit 'unifiedWindows)))
+      (let ((name (format "%s" (car window))))
+        (unless (equal name type)
+          (setf (alist-get name reports nil nil #'equal)
+                (cons (cons 'rateLimitType name) (cdr window))))))
+    (setf (alist-get type reports nil nil #'equal) limit)
+    (puthash account-id reports my/agent-usage)))
+
+(defconst my/agent-limit-names
+  '(("five_hour" . "5h") ("seven_day" . "7d") ("seven_day_opus" . "7d Opus")
+    ("seven_day_sonnet" . "7d Sonnet") ("overage" . "extra"))
+  "Short modeline names of the agent's rate limit types.")
+
+(defun my/agent-limit-percent (limit)
+  "LIMIT's utilization in percent, or nil.  The agent may send 0-1 or 0-100."
+  (let ((utilization (ignore-errors (map-elt limit 'utilization))))
+    (when (numberp utilization)
+      (round (if (<= utilization 1) (* 100 utilization) utilization)))))
+
+(defun my/agent-limit-face (limit percent)
+  "The face for LIMIT at PERCENT: red when rejected, orange when warned or high."
+  (let ((status (format "%s" (or (ignore-errors (map-elt limit 'status)) ""))))
+    (cond ((equal status "rejected") 'error)
+          ((or (equal status "allowed_warning") (and percent (>= percent 80))) 'warning)
+          (t 'doom-modeline-info))))
+
+(defun my/agent-limit-reset (limit)
+  "When LIMIT resets, as \"↻18:00\" today or \"↻Mon 03:00\" later, or nil."
+  (let ((resets (ignore-errors (map-elt limit 'resetsAt))))
+    (when (numberp resets)
+      ;; The SDK sends seconds; milliseconds would be far in the future.
+      (let ((time (if (> resets 1e11) (/ resets 1000.0) resets)))
+        (concat "↻" (format-time-string
+                     (if (< (- time (float-time)) 86400) "%H:%M" "%a %H:%M")
+                     time))))))
+
+(defun my/agent-usage-label (account)
+  "ACCOUNT's reported rate limits, as \"5h 34% ↻18:00  7d 51%\", or nil."
+  (when-let ((reports (gethash (format "%s" (plist-get account :id)) my/agent-usage)))
+    (mapconcat
+     (lambda (entry)
+       (let* ((limit (cdr entry))
+              (percent (my/agent-limit-percent limit))
+              (name (or (alist-get (car entry) my/agent-limit-names nil nil #'equal)
+                        (car entry))))
+         (propertize (string-join (delq nil (list name
+                                                  (and percent (format "%d%%" percent))
+                                                  (my/agent-limit-reset limit)))
+                                  " ")
+                     'face (my/agent-limit-face limit percent))))
+     (sort (copy-sequence reports)
+           (lambda (a b) (string< (car a) (car b))))
+     "  ")))
+
+(defun my/agent-chat-model-label ()
+  "The model the current chat runs, from its session options, or nil."
+  (when (derived-mode-p 'agent-shell-mode)
+    (when-let* ((options (condition-case nil (agent-shell-config-options) (error nil)))
+                (model (seq-find (lambda (option)
+                                   (equal (map-elt option :category) "model"))
+                                 options))
+                (current (map-elt model :current-value)))
+      (or (map-elt (seq-find (lambda (choice) (equal (map-elt choice :value) current))
+                             (map-elt model :options))
+                   :name)
+          current))))
+
+(with-eval-after-load 'doom-modeline
+  (doom-modeline-def-segment agent-chat
+    "The chat's account and model, shown in the centre of the modeline."
+    (when-let ((account (my/agent-chat-account)))
+      (let ((model (my/agent-chat-model-label))
+            (limit (my/agent-usage-label account)))
+        (concat (propertize (format " %s " (agent-desk-icon-letter account))
+                            'face `(:background ,(agent-desk-icon-color account)
+                                    :foreground "#ffffff" :weight bold))
+                (when model (format "  %s" model))
+                ;; agent-shell's own "23k/1m (2%)", escaped for the modeline.
+                (when-let ((context (ignore-errors (agent-shell--context-usage-indicator))))
+                  (concat "  " context))
+                ;; The modeline reads % as a format code: double it.
+                (when limit (concat "  " (string-replace "%" "%%" limit)))))))
+  (doom-modeline-def-modeline 'agent-chat
+    '(bar window-number modals buffer-info)
+    '(agent-chat misc-info major-mode process)))
+
+(add-hook 'agent-shell-mode-hook
+          (lambda ()
+            (my/agent-usage-subscribe)
+            (when (fboundp 'doom-modeline-set-modeline)
+              (doom-modeline-set-modeline 'agent-chat))))
+
+;; The desk's side panels show no modeline of their own; the chat's carries the state.
+(with-eval-after-load 'agent-desk-ui
+  (advice-add 'agent-desk-ui-display-side :filter-return
+              (lambda (window)
+                (when (window-live-p window)
+                  (set-window-parameter window 'mode-line-format 'none))
+                window)))
+
+(provide 'agent-view)
+;;; agent-view.el ends here
