@@ -6,8 +6,10 @@
 (defvar agent-shell-busy-submit-default-function)
 (defvar agent-shell-busy-submit-override-function)
 (defvar agent-shell-chat-label-function)
+(defvar agent-shell-header-font-family)
 (defvar agent-desk--thread-id)
 (declare-function agent-shell-config-options "agent-shell")
+(declare-function agent-shell--update-header-and-mode-line "agent-shell")
 (declare-function agent-shell-busy-submit-steer "agent-shell-prompt-queue")
 (declare-function agent-shell-busy-submit-queue "agent-shell-prompt-queue")
 (declare-function mixed-pitch-mode "mixed-pitch")
@@ -22,9 +24,6 @@
 
 ;;; Chat look
 
-(defvar my/agent-prose-height 0.9
-  "Height of agent chat prose, as a fraction of the default face.")
-
 (defconst my/agent-fixed-pitch-faces
   '(agent-shell-markdown-inline-code
     agent-shell-markdown-source-block
@@ -35,19 +34,81 @@
     agent-shell-markdown-table-zebra)
   "Chat faces that stay fixed-pitch: code, tables and their borders.")
 
-(defvar my/agent-prose-families
-  '("Inter" "Inter Variable" "SF Pro Text" "Helvetica Neue")
-  "Proportional fonts tried in order for chat prose.
-Inter (brew install --cask font-inter) is wide and open, the closest free
-match to Claude's own sans.  A font installed while Emacs runs may show up
-only as \"Inter Variable\" until a restart.")
+;; The panels take their font from agent-desk's own options, set here from
+;; the scheme in config.el (`my/font-scheme').
+(defun my/agent-panel-fonts ()
+  "Set agent-desk's panel font options from `my/font-scheme'."
+  (setq agent-desk-sidebar-font-families
+        (if (eq my/font-scheme 'mixed) my/mixed-ui-font-candidates my/ui-font-candidates)
+        agent-desk-sidebar-font-height (my/ui-chrome-height 0.95)))
 
-(defun my/agent-prose-family ()
-  "The first installed font of `my/agent-prose-families'."
-  (or (and (display-graphic-p)
-           (seq-find (lambda (family) (find-font (font-spec :family family)))
-                     my/agent-prose-families))
-      "Helvetica Neue"))
+(with-eval-after-load 'agent-desk-sidebar (my/agent-panel-fonts))
+
+(defun my/agent-panel-refont (buffer refresh)
+  "Give panel BUFFER the current panel font, then call REFRESH to relayout."
+  (when (buffer-live-p buffer)
+    (with-current-buffer buffer
+      ;; Drop the panel's earlier font remap before adding the new one.
+      (setf (alist-get 'default face-remapping-alist)
+            (seq-remove (lambda (spec) (and (consp spec) (plist-member spec :family)))
+                        (alist-get 'default face-remapping-alist)))
+      (agent-desk-ui-setup-panel agent-desk-sidebar-font-families
+                                 agent-desk-sidebar-font-height
+                                 agent-desk-sidebar-line-spacing))
+    (funcall refresh)))
+
+;; These chat faces are words, not code, but inherit font-lock faces that
+;; mixed-pitch keeps fixed-pitch: fold summaries, labels, headings, quotes.
+(defconst my/agent-ui-text-faces
+  '(agent-shell-secondary agent-shell-pending agent-shell-input
+    agent-shell-section-heading agent-shell-section-annotation
+    agent-shell-diff-changes-label agent-shell-markdown-blockquote
+    agent-shell-model agent-shell-thought-level agent-shell-buffer-name
+    agent-shell-session-id agent-shell-session-mode agent-shell-session-title
+    agent-shell-session-directory agent-shell-session-date
+    agent-shell-list-name agent-shell-list-value agent-shell-viewport-prompt
+    agent-shell-container-indicator header-line)
+  "Chat faces drawn in the UI sans in the `unified' font scheme.")
+
+(defvar-local my/agent-ui-text-cookies nil
+  "Face remap cookies `my/agent-chat-fonts' added in this buffer.")
+
+(defun my/agent-label-family ()
+  "Face attributes giving chat labels the UI sans in the `unified' scheme."
+  (when-let* (((eq my/font-scheme 'unified))
+              (family (my/ui-font)))
+    (list :family family)))
+
+(defun my/agent-chat-fonts ()
+  "Draw the chat's word faces in the UI sans when the scheme is `unified'.
+The header is an SVG image and takes `agent-shell-header-font-family'."
+  (setq-local agent-shell-header-font-family
+              (and (eq my/font-scheme 'unified) (my/ui-font)))
+  (mapc #'face-remap-remove-relative my/agent-ui-text-cookies)
+  (setq my/agent-ui-text-cookies
+        (when-let* (((eq my/font-scheme 'unified))
+                    (family (my/ui-font)))
+          (mapcar (lambda (face) (face-remap-add-relative face :family family))
+                  my/agent-ui-text-faces))))
+
+(defun my/toggle-font-scheme ()
+  "Switch UI text between the `unified' and `mixed' font schemes, live."
+  (interactive)
+  (setq my/font-scheme (if (eq my/font-scheme 'mixed) 'unified 'mixed))
+  (my/tab-bar-apply-faces)
+  (when (featurep 'agent-desk-sidebar)
+    (my/agent-panel-fonts)
+    (my/agent-panel-refont (get-buffer agent-desk-sidebar-buffer-name)
+                           #'agent-desk-sidebar-refresh)
+    (when (featurep 'agent-desk-details)
+      (my/agent-panel-refont (get-buffer agent-desk-details-buffer-name)
+                             #'agent-desk-details-refresh)))
+  (dolist (buffer (buffer-list))
+    (with-current-buffer buffer
+      (when (derived-mode-p 'agent-shell-mode)
+        (my/agent-chat-fonts)
+        (agent-shell--update-header-and-mode-line))))
+  (message "Font scheme: %s" my/font-scheme))
 
 (defun my/agent-header-hover ()
   "Make hovering the chat header a subtle lift instead of the theme's violet.
@@ -96,14 +157,15 @@ In the history above, clicks and drags still move point and select text."
   "Give a chat buffer proportional prose; code and tables stay fixed-pitch."
   (my/agent-header-hover)
   (my/agent-code-panels)
+  (my/agent-chat-fonts)
   ;; No scroll bar: Emacs sizes its thumb from a sample of line heights, and
   ;; a chat's folds, wrapped prose and tables make it jump as you scroll.
   (setq-local vertical-scroll-bar nil)
   (add-hook 'post-command-hook #'my/agent-prompt-cursor nil t)
   (mixed-pitch-mode 1)
   (face-remap-add-relative 'variable-pitch
-                           :family (my/agent-prose-family)
-                           :height my/agent-prose-height))
+                           :family (or (my/ui-font) "Helvetica Neue")
+                           :height my/ui-font-height))
 
 (defun my/agent-prose-after-solaire ()
   "Put mixed-pitch's proportional font back in front of solaire's remap.
@@ -161,13 +223,14 @@ The agent's badge is a letter in the account colour, as in the sidebar."
                      (agent-desk-icon-color account))))
     (if (and account color)
         (concat (propertize (format " %s " (agent-desk-icon-letter account))
-                            'face `(:background ,color :foreground "#ffffff" :weight bold))
+                            'face `(:background ,color :foreground "#ffffff" :weight bold
+                                    ,@(my/agent-label-family)))
                 (propertize (format " %s" text)
-                            'face `(:foreground ,color :weight bold)))
+                            'face `(:foreground ,color :weight bold ,@(my/agent-label-family))))
       (propertize (format " %s " text)
-                  'face (if user
-                            '(:weight bold :inherit font-lock-keyword-face)
-                          '(:weight bold :inherit font-lock-function-name-face))))))
+                  'face `(:weight bold ,@(my/agent-label-family)
+                          :inherit ,(if user 'font-lock-keyword-face
+                                      'font-lock-function-name-face))))))
 
 (with-eval-after-load 'agent-shell-chat-mode
   (setq agent-shell-chat-label-function #'my/agent-chat-label))

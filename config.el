@@ -61,13 +61,43 @@
 ;; Every frame opens maximized: the Agents layout needs the whole screen.
 (add-to-list 'default-frame-alist '(fullscreen . maximized))
 
-;; Proportional text (chat prose through mixed-pitch, which copies this face)
-;; in Inter, a wide open sans (brew install --cask font-inter).  Unset, it is
-;; "Sans Serif", which macOS draws in narrow Tahoma.
-(when (display-graphic-p)
-  (when-let ((family (seq-find (lambda (f) (find-font (font-spec :family f)))
-                               '("Inter" "Inter Variable" "SF Pro Text" "Helvetica Neue"))))
-    (setq doom-variable-pitch-font (font-spec :family family))))
+;; Two fonts: the editor font for code, and one UI sans for everything people
+;; read as text (chat prose, the agent-desk panels, tab labels), all at
+;; `my/ui-font-height'.  `my/toggle-font-scheme' switches to the earlier
+;; `mixed' set (Helvetica Neue in panels and tabs, Inter in chats) to compare.
+(defvar my/font-scheme 'unified
+  "Fonts for UI text: `unified' (one sans, one size) or `mixed' (the earlier set).")
+
+(defconst my/ui-font-candidates '("Inter" "Inter Variable" "SF Pro Text" "Helvetica Neue")
+  "UI sans fonts tried in order.  Inter: brew install --cask font-inter.
+A font installed while Emacs runs may show up only as \"Inter Variable\".")
+
+(defconst my/mixed-ui-font-candidates
+  '("SF Pro Text" "SF Pro" "Helvetica Neue" "Inter" "Cantarell" "Noto Sans")
+  "The `mixed' scheme's fonts for panels and tabs (Helvetica Neue here).")
+
+(defvar my/ui-font-height 0.9
+  "Height of UI text relative to the editor font, in the `unified' scheme.")
+
+(defun my/first-font (families)
+  "The first installed font of FAMILIES, or nil."
+  (and (display-graphic-p)
+       (seq-find (lambda (f) (find-font (font-spec :family f))) families)))
+
+(defun my/ui-font (&optional chrome)
+  "The UI sans for prose, or with CHROME for panels and tabs."
+  (my/first-font (if (and chrome (eq my/font-scheme 'mixed))
+                     my/mixed-ui-font-candidates
+                   my/ui-font-candidates)))
+
+(defun my/ui-chrome-height (mixed)
+  "Height of panel and tab text: MIXED in the `mixed' scheme."
+  (if (eq my/font-scheme 'mixed) mixed my/ui-font-height))
+
+;; mixed-pitch copies this face.  Unset, it is "Sans Serif", which macOS
+;; draws in narrow Tahoma.
+(when-let* ((family (my/ui-font)))
+  (setq doom-variable-pitch-font (font-spec :family family)))
 
 (add-hook 'after-setting-font-hook
           (lambda ()
@@ -111,10 +141,6 @@
 
 ;; Sublime-like tabs: taller, padded, a UI font, a file-type icon, the
 ;; selected tab in the editor background and the rest in the bar colour.
-(defvar my/tab-bar-font-families
-  '("SF Pro Text" "SF Pro" "Helvetica Neue" "Inter" "Cantarell" "Noto Sans")
-  "UI fonts tried in order for tab labels; the editor font is the fallback.")
-
 (defvar my/tab-bar-named-icons
   '(("Agents" . (nerd-icons-mdicon "nf-md-robot_outline")))
   "Icons for renamed tabs, whose names are not buffer names.")
@@ -205,11 +231,10 @@ MARGIN is the horizontal space in pixels on each side."
   "Restyle the tab bar from the current theme's palette."
   (let ((bar (doom-color 'bg-alt))
         (active (doom-color 'bg))
-        (family (seq-find (lambda (f) (find-font (font-spec :family f)))
-                          my/tab-bar-font-families))
+        (family (my/ui-font t))
         (vertical '(1 . 8)))
     (set-face-attribute 'tab-bar nil
-                        :family (or family 'unspecified) :height 1.0
+                        :family (or family 'unspecified) :height (my/ui-chrome-height 1.0)
                         :background bar :foreground (doom-color 'base5)
                         :box `(:line-width (1 . 2) :color ,bar))
     (set-face-attribute 'tab-bar-tab nil
