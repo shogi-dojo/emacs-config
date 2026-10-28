@@ -58,6 +58,9 @@
 (setq doom-theme 'doom-dracula
       doom-font (font-spec :family my/font-family :size my/font-size))
 
+;; Every frame opens maximized: the Agents layout needs the whole screen.
+(add-to-list 'default-frame-alist '(fullscreen . maximized))
+
 ;; Proportional text (chat prose through mixed-pitch, which copies this face)
 ;; in Inter, a wide open sans (brew install --cask font-inter).  Unset, it is
 ;; "Sans Serif", which macOS draws in narrow Tahoma.
