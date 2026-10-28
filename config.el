@@ -141,6 +141,10 @@ A font installed while Emacs runs may show up only as \"Inter Variable\".")
 
 ;; Sublime-like tabs: taller, padded, a UI font, a file-type icon, the
 ;; selected tab in the editor background and the rest in the bar colour.
+(defvar my/tab-bar-font-height 1.1
+  "Height of tab labels and icons relative to the editor font.
+Larger than other UI text: the tab bar has room, and tabs are targets.")
+
 (defvar my/tab-bar-named-icons
   '(("Agents" . (nerd-icons-mdicon "nf-md-robot_outline")))
   "Icons for renamed tabs, whose names are not buffer names.")
@@ -195,7 +199,7 @@ a display-space first character would make it loop forever in redisplay."
 ;; Each button is one character, so auto-width finds the close button at
 ;; the tab's end, and image margins give the padding around it.  Tab-bar
 ;; reloads its buttons whenever the mode turns on, so replace them then.
-(defvar my/tab-bar-button-size 16
+(defvar my/tab-bar-button-size 18
   "Pixel size of the tab bar's close and new-tab icons.")
 
 (defun my/tab-bar--icon (kind color margin)
@@ -234,7 +238,7 @@ MARGIN is the horizontal space in pixels on each side."
         (family (my/ui-font t))
         (vertical '(1 . 8)))
     (set-face-attribute 'tab-bar nil
-                        :family (or family 'unspecified) :height (my/ui-chrome-height 1.0)
+                        :family (or family 'unspecified) :height my/tab-bar-font-height
                         :background bar :foreground (doom-color 'base5)
                         :box `(:line-width (1 . 2) :color ,bar))
     (set-face-attribute 'tab-bar-tab nil
