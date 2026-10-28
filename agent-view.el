@@ -64,12 +64,20 @@
 
 ;;; Chat labels
 
+(defvar-local my/agent-chat-account-cache nil
+  "A (THREAD-ID . ACCOUNT) pair: the account last looked up for this chat.")
+
 (defun my/agent-chat-account ()
-  "The account of the chat in the current buffer, or nil."
+  "The account of the chat in the current buffer, or nil.
+It is looked up once per thread: the modeline asks on every redisplay."
   (when (and (bound-and-true-p agent-desk--thread-id)
              (fboundp 'agent-desk-store-get-thread))
-    (when-let ((row (agent-desk-store-get-thread agent-desk--thread-id)))
-      (agent-desk-account-by-id (plist-get row :account-id)))))
+    (if (eql (car my/agent-chat-account-cache) agent-desk--thread-id)
+        (cdr my/agent-chat-account-cache)
+      (let ((account (when-let ((row (agent-desk-store-get-thread agent-desk--thread-id)))
+                       (agent-desk-account-by-id (plist-get row :account-id)))))
+        (setq my/agent-chat-account-cache (cons agent-desk--thread-id account))
+        account))))
 
 (defun my/agent-chat-label (label)
   "Draw a chat LABEL: the user's name bold, the agent's in its account colour.
@@ -159,8 +167,9 @@ It starts in the chat's directory and is reused for that project."
 ;;; One modeline, with the chat's account and model
 
 (defvar my/agent-usage (make-hash-table :test 'equal)
-  "Per account id, the latest rate limit the agent reported.
-It is the agent's `_claude/rateLimit' metadata.")
+  "Per account id, an alist of rate limit type to the latest report of it.
+Each report is the agent's `_claude/rateLimit' metadata: utilization,
+resetsAt, rateLimitType and status.")
 
 (defvar-local my/agent-context-percent nil
   "How full the chat's context window is, in percent, or nil until reported.")
@@ -184,15 +193,61 @@ It is the agent's `_claude/rateLimit' metadata.")
                  (setq my/agent-context-percent (round (* 100.0 (/ used size)))))
                (when-let ((account (my/agent-chat-account)))
                  (when limit
-                   (puthash (format "%s" (plist-get account :id)) limit
-                            my/agent-usage)))))))))))
+                   (my/agent-usage-record (format "%s" (plist-get account :id))
+                                          limit)))))))))))
+
+(defun my/agent-usage-record (account-id limit)
+  "Keep LIMIT as ACCOUNT-ID's latest report for its rate limit type."
+  (let* ((type (format "%s" (or (map-elt limit 'rateLimitType) "five_hour")))
+         (reports (gethash account-id my/agent-usage)))
+    (setf (alist-get type reports nil nil #'equal) limit)
+    (puthash account-id reports my/agent-usage)))
+
+(defconst my/agent-limit-names
+  '(("five_hour" . "5h") ("seven_day" . "7d") ("seven_day_opus" . "7d Opus")
+    ("seven_day_sonnet" . "7d Sonnet") ("overage" . "extra"))
+  "Short modeline names of the agent's rate limit types.")
+
+(defun my/agent-limit-percent (limit)
+  "LIMIT's utilization in percent, or nil.  The agent may send 0-1 or 0-100."
+  (let ((utilization (ignore-errors (map-elt limit 'utilization))))
+    (when (numberp utilization)
+      (round (if (<= utilization 1) (* 100 utilization) utilization)))))
+
+(defun my/agent-limit-face (limit percent)
+  "The face for LIMIT at PERCENT: red when rejected, orange when warned or high."
+  (let ((status (format "%s" (or (ignore-errors (map-elt limit 'status)) ""))))
+    (cond ((equal status "rejected") 'error)
+          ((or (equal status "allowed_warning") (and percent (>= percent 80))) 'warning)
+          (t 'doom-modeline-info))))
+
+(defun my/agent-limit-reset (limit)
+  "When LIMIT resets, as \"↻18:00\" today or \"↻Mon 03:00\" later, or nil."
+  (let ((resets (ignore-errors (map-elt limit 'resetsAt))))
+    (when (numberp resets)
+      ;; The SDK sends seconds; milliseconds would be far in the future.
+      (let ((time (if (> resets 1e11) (/ resets 1000.0) resets)))
+        (concat "↻" (format-time-string
+                     (if (< (- time (float-time)) 86400) "%H:%M" "%a %H:%M")
+                     time))))))
 
 (defun my/agent-usage-label (account)
-  "The agent's rate limit for ACCOUNT as \"34%\", or nil when none was reported."
-  (when-let* ((limit (gethash (format "%s" (plist-get account :id)) my/agent-usage))
-              (utilization (ignore-errors (map-elt limit 'utilization)))
-              ((numberp utilization)))
-    (format "%s%%" (round utilization))))
+  "ACCOUNT's reported rate limits, as \"5h 34% ↻18:00  7d 51%\", or nil."
+  (when-let ((reports (gethash (format "%s" (plist-get account :id)) my/agent-usage)))
+    (mapconcat
+     (lambda (entry)
+       (let* ((limit (cdr entry))
+              (percent (my/agent-limit-percent limit))
+              (name (or (alist-get (car entry) my/agent-limit-names nil nil #'equal)
+                        (car entry))))
+         (propertize (string-join (delq nil (list name
+                                                  (and percent (format "%d%%" percent))
+                                                  (my/agent-limit-reset limit)))
+                                  " ")
+                     'face (my/agent-limit-face limit percent))))
+     (sort (copy-sequence reports)
+           (lambda (a b) (string< (car a) (car b))))
+     "  ")))
 
 (defun my/agent-chat-model-label ()
   "The model the current chat runs, from its session options, or nil."
@@ -219,7 +274,7 @@ It is the agent's `_claude/rateLimit' metadata.")
                 (when model (format "  %s" model))
                 (when my/agent-context-percent
                   (format "  ctx %d%%" my/agent-context-percent))
-                (when limit (format "  5h %s" limit))))))
+                (when limit (concat "  " limit))))))
   (doom-modeline-def-modeline 'agent-chat
     '(bar window-number modals buffer-info)
     '(agent-chat misc-info major-mode process)))
