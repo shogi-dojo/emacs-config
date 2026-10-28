@@ -58,9 +58,23 @@ The header's model and mode text is violet too, and vanished under it."
       (face-remap-add-relative face :background background :foreground 'unspecified
                                :box nil :inverse-video nil))))
 
+(defface my/agent-fold-chevron
+  '((t :inherit shadow :family "Symbols Nerd Font Mono" :height 1.0))
+  "The chat's fold arrows, small and dim like treemacs' chevrons.")
+
+(defun my/agent-fold-chevrons ()
+  "Draw agent-shell's ▶/▼ fold arrows as treemacs' octicon chevrons.
+agent-shell inserts and later searches for the literal triangles, so only
+their display changes, through the buffer's display table."
+  (let ((table (or buffer-display-table (make-display-table))))
+    (pcase-dolist (`(,arrow . ,chevron) '((?▶ . #xF460) (?▼ . #xF47C)))
+      (aset table arrow (vector (make-glyph-code chevron 'my/agent-fold-chevron))))
+    (setq buffer-display-table table)))
+
 (defun my/agent-shell-prose ()
   "Give a chat buffer proportional prose; code and tables stay fixed-pitch."
   (my/agent-header-hover)
+  (my/agent-fold-chevrons)
   (mixed-pitch-mode 1)
   (face-remap-add-relative 'variable-pitch
                            :family (my/agent-prose-family)
