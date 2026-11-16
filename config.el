@@ -281,6 +281,21 @@ The project containing the current buffer comes first."
       (append (seq-filter (lambda (p) (and here (string-prefix-p (cdr p) here))) projects)
               (seq-remove (lambda (p) (and here (string-prefix-p (cdr p) here))) projects)))))
 
+;; `git ls-files --exclude-standard' hides gitignored files, so the local
+;; secrets-style files a project keeps at its root (.env.*) never reach `kk'.
+;; List them for the projects named here: (ROOT-DIRECTORY-NAME . GIT-PATHSPEC).
+(defvar my/find-file-ignored-extras '(("dojo-platform" . ".env*"))
+  "Gitignored files to offer in `my/find-file-in-treemacs-projects', per project.")
+
+(defun my/ignored-project-files (name root)
+  "Gitignored root-level files of project NAME at ROOT that it should still list."
+  (when-let* ((spec (cdr (assoc name my/find-file-ignored-extras))))
+    (let ((default-directory root))
+      (split-string
+       (shell-command-to-string
+        (format "git ls-files -z -o -i --exclude-standard -- %s" (shell-quote-argument spec)))
+       "\0" t))))
+
 (defun my/find-file-in-treemacs-projects ()
   "Find a file in any project of the current Treemacs workspace.
 Falls back to `projectile-find-file' when the workspace has no projects."
@@ -293,7 +308,8 @@ Falls back to `projectile-find-file' when the workspace has no projects."
              (projectile-enable-caching nil)
              (candidates
               (cl-loop for (name . root) in projects
-                       nconc (cl-loop for file in (projectile-project-files root)
+                       nconc (cl-loop for file in (append (projectile-project-files root)
+                                                          (my/ignored-project-files name root))
                                       for candidate = (concat name "/" file)
                                       do (puthash candidate (expand-file-name file root) paths)
                                       collect candidate)))
